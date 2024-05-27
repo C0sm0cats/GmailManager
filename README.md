@@ -40,7 +40,7 @@ Before using SaveGmail, ensure you have the following:
 ## Installation
 1. Clone this repository:
     ```sh
-    git clone https://github.com/your-username/GmailManager.git
+    git clone https://github.com/C0sm0cats/GmailManager.git
     cd GmailManager
     ```
 
