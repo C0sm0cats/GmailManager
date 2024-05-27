@@ -15,7 +15,7 @@ GmailManager is a desktop application written in Python that allows you to manag
 
 ## Prerequisites
 
-Before using SaveGmail, ensure you have the following:
+Before using GmailManager, ensure you have the following:
 
 - **Python**: Version 3.7 or higher installed on your system.
 - **Google Cloud Platform Project**: Have a project set up with the Gmail API enabled.
