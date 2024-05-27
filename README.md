@@ -14,9 +14,28 @@ GmailManager is a desktop application written in Python that allows you to manag
 - Compose and send new messages
 
 ## Prerequisites
-- Python 3.7 or higher
+
+Before using SaveGmail, ensure you have the following:
+
+- **Python**: Version 3.7 or higher installed on your system.
+- **Google Cloud Platform Project**: Have a project set up with the Gmail API enabled.
+- **OAuth 2.0 Credentials File**: Download the `credentials.json` file from the Google Cloud Console.
+- **Dependencies**: Make sure the following dependencies are installed:
+
+   - `os`: Python standard module for interacting with the operating system.
+   - `base64`: Python standard module for encoding and decoding in base64.
+   - `google-auth`: Library for Google authentication.
+   - `google-auth-oauthlib`: Library for OAuth2 authentication with Google.
+   - `google-api-python-client`: Library for using Google APIs in Python.
+   - `pytz`: Library for managing timezones in Python.
+   - `wx`: Alias for `wxPython`, a GUI library for creating multi-platform desktop applications.
+   - `email`: Python standard module for email manipulation.
+
+  Make sure to install these dependencies before running your GmailManager script.
+
 - [Google API Client Library for Python](https://github.com/googleapis/google-api-python-client)
 - [wxPython](https://www.wxpython.org/)
+
 
 ## Installation
 1. Clone this repository:
