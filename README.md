@@ -32,7 +32,7 @@ GmailManager is a desktop application written in Python that allows you to manag
 ## Usage
 1. Run the main script:
     ```sh
-    python gmail_manager.py
+    python gmailmanager.py
     ```
 
 2. A browser window will open asking you to sign in to your Gmail account and authorize access for the application.
