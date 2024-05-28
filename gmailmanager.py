@@ -347,6 +347,7 @@ def display_labels_and_messages(labels, service):
 
             message = service.users().messages().get(userId='me', id=selected_message['id'], format="full").execute()
             payload = message.get('payload', {})
+            parts = payload.get('parts', [])
 
             def extract_data(items):
                 for item in items:
@@ -367,18 +368,43 @@ def display_labels_and_messages(labels, service):
                             return inner_data
                 return ''
 
+            def find_matching_part(parts, mime_type):
+                for part in parts:
+                    if 'mimeType' in part and part['mimeType'] == mime_type:
+                        return part
+
+                    result = find_matching_part(part.get('parts', []), mime_type)
+                    if result:
+                        return result
+
+                return None
+
+            def extract_html(parts):
+                matching_part = find_matching_part(parts, 'text/html')
+                if not matching_part:
+                    return ""
+
+                if 'body' in matching_part and matching_part['body']:
+                    if 'data' in matching_part['body']:
+                        data = matching_part['body']['data']
+                        html_data = base64.urlsafe_b64decode(data).decode('utf-8')
+                        return html_data
+
+                if 'parts' in matching_part and len(matching_part['parts']) > 0:
+                    return extract_html(matching_part['parts'])
+
+                return ""
+
             def decode_base64(data):
                 missing_padding = 4 - len(data) % 4
                 if missing_padding:
                     data += '=' * missing_padding
                 return base64.urlsafe_b64decode(data)
 
-            content = extract_data([payload])
-
-            if content:
-                pass
+            if 'text/html' in [part.get('mimeType') for part in parts]:
+                content = extract_html([payload])
             else:
-                content = '<pre>No Textual Data</pre>'
+                content = extract_data([payload])
 
             headers = {header['name']: header['value'] for header in payload.get('headers', [])}
             subject = headers.get('Subject', 'No Subject')
