@@ -11,6 +11,8 @@ import wx
 import wx.html
 import wx.html2
 import wx.adv
+import json
+import html
 from email.message import EmailMessage
 
 # We need full access to delete emails
@@ -345,26 +347,38 @@ def display_labels_and_messages(labels, service):
 
             message = service.users().messages().get(userId='me', id=selected_message['id'], format="full").execute()
             payload = message.get('payload', {})
-            parts = payload.get('parts', [])
 
-            def extract_html(parts):
-                for part in parts:
-                    if 'mimeType' in part and part['mimeType'] == 'text/html':
-                        if part.get('body') and part['body'].get('data'):
-                            data = part['body']['data']
-                            html_data = base64.urlsafe_b64decode(data).decode('utf-8')
-                            return html_data
-                        elif 'data' in part['body']:
-                            data = part['body']['data']
-                            html_data = base64.urlsafe_b64decode(data).decode('utf-8')
-                            return html_data
-                        elif 'parts' in part:
-                            html_data = extract_html(part['parts'])
-                            if html_data:
-                                return html_data
+            def extract_data(items):
+                for item in items:
+                    if 'body' in item and item['body']:
+                        if 'data' in item['body']:
+                            data = item['body']['data']
+                            return decode_base64(data).decode('utf-8').strip()
+
+                        if 'attachmentId' in item['body']:
+                            attachment_id = item['body']['attachmentId']
+                            attachment = service.users().messages().attachments().get(userId='me', messageId=selected_message['id'], id=attachment_id).execute()
+                            data = attachment['data']
+                            return decode_base64(data).decode('utf-8').strip()
+
+                    if 'parts' in item and item['parts']:
+                        inner_data = extract_data(item['parts'])
+                        if inner_data:
+                            return inner_data
                 return ''
 
-            html_content = extract_html(parts)
+            def decode_base64(data):
+                missing_padding = 4 - len(data) % 4
+                if missing_padding:
+                    data += '=' * missing_padding
+                return base64.urlsafe_b64decode(data)
+
+            content = extract_data([payload])
+
+            if content:
+                pass
+            else:
+                content = '<pre>No Textual Data</pre>'
 
             headers = {header['name']: header['value'] for header in payload.get('headers', [])}
             subject = headers.get('Subject', 'No Subject')
@@ -372,39 +386,28 @@ def display_labels_and_messages(labels, service):
             from_email = headers.get('From', 'No Sender')
             to_emails = headers.get('To', 'No Recipient')
 
-            # Afficher la chaîne de date brute
+            # Display raw date string
             formatted_date = date_str
 
             formatted_from = f"From: {from_email}"
             formatted_to = f"To: {to_emails}"
 
-            combined_html = f"""
-            <html>
-            <head>
-                <meta charset="UTF-8">
-            </head>
-            <body>
-                <h1>{subject}</h1>
-                <hr>
-                <h3>{formatted_date}</h3>
-                <h3>{formatted_from}</h3>
-                <h3>{formatted_to}</h3>
-                <hr>
-                {html_content}
-            </body>
+            combined_html = f"""\
+            <html>\
+            <head>\
+                <meta charset="UTF-8">\
+            </head>\
+            <body>\
+                <h1>{subject}</h1>\
+                <hr />\
+                <h3>{formatted_date}</h3>\
+                <h3>{formatted_from}</h3>\
+                <h3>{formatted_to}</h3>\
+                <hr />\
+                {content}\
+            </body>\
             </html>
             """
-
-            if 'threadId' in message:
-                thread_id = message['threadId']
-                thread_messages = service.users().threads().get(userId='me', id=thread_id, format="full").execute()
-                replies = thread_messages.get('messages', [])[1:]
-                for reply in replies:
-                    reply_payload = reply.get('payload', {})
-                    reply_parts = reply_payload.get('parts', [])
-                    reply_html_content = extract_html(reply_parts)
-                    reply_subject = reply_payload.get('subject', 'No Subject')
-                    combined_html += f"<hr><h2>Reply: {reply_subject}</h2>{reply_html_content}"
 
             message_content_html.SetPage(combined_html)
 
@@ -413,7 +416,6 @@ def display_labels_and_messages(labels, service):
 
     label_listctrl.Bind(wx.EVT_LIST_ITEM_SELECTED, on_label_selected)
     message_listctrl.Bind(wx.EVT_LIST_ITEM_SELECTED, on_message_selected)
-
     app.MainLoop()
 
 
