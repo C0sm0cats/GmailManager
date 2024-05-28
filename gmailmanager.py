@@ -351,37 +351,46 @@ def display_labels_and_messages(labels, service):
             parts = payload.get('parts', [])
 
             def extract_data(items):
+                result = ""
                 for item in items:
                     if 'body' in item and item['body']:
                         if 'data' in item['body']:
                             data = item['body']['data']
-                            return decode_base64(data).decode('utf-8').strip()
-
-                        if 'attachmentId' in item['body']:
+                            result += decode_base64(data).decode("utf-8")
+                        elif 'attachmentId' in item['body']:
                             attachment_id = item['body']['attachmentId']
-                            attachment = service.users().messages().attachments().get(userId='me', messageId=selected_message['id'], id=attachment_id).execute()
+                            attachment = service.users().messages().attachments().get(userId='me', messageId=msg_id, id=attachment_id).execute()
                             data = attachment['data']
-                            return decode_base64(data).decode('utf-8').strip()
+                            result += decode_base64(data).decode("utf-8")
+                    elif 'parts' in item and item['parts']:
+                        if 'mimeType' in item and item["mimeType"] == "multipart/alternative":
+                            result += extract_data(item['parts'])
+                        elif 'mimeType' in item and item["mimeType"] == "multipart/mixed":
+                            for sub_item in item['parts']:
+                                if 'mimeType' in sub_item and sub_item['mimeType'] != "multipart/*":
+                                    result += extract_data([sub_item])
+                                else:
+                                    result += extract_data(sub_item['parts'])
+                        else:
+                            result += extract_data(item['parts'])
+                return result
 
-                    if 'parts' in item and item['parts']:
-                        inner_data = extract_data(item['parts'])
-                        if inner_data:
-                            return inner_data
-                return ''
+            def find_matching_part(parts, mime_type, max_depth, current_depth=0):
+                matching_part = None
 
-            def find_matching_part(parts, mime_type):
                 for part in parts:
                     if 'mimeType' in part and part['mimeType'] == mime_type:
                         return part
 
-                    result = find_matching_part(part.get('parts', []), mime_type)
-                    if result:
-                        return result
+                    if 'parts' in part and current_depth < max_depth:
+                        matched_part = find_matching_part(part['parts'], mime_type, max_depth, current_depth=current_depth+1)
+                        if matched_part:
+                            matching_part = matched_part
 
-                return None
+                return matching_part
 
-            def extract_html(parts):
-                matching_part = find_matching_part(parts, 'text/html')
+            def extract_html(parts, max_depth=3):
+                matching_part = find_matching_part(parts, 'text/html', max_depth)
                 if not matching_part:
                     return ""
 
@@ -390,9 +399,6 @@ def display_labels_and_messages(labels, service):
                         data = matching_part['body']['data']
                         html_data = base64.urlsafe_b64decode(data).decode('utf-8')
                         return html_data
-
-                if 'parts' in matching_part and len(matching_part['parts']) > 0:
-                    return extract_html(matching_part['parts'])
 
                 return ""
 
