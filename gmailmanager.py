@@ -346,6 +346,7 @@ def display_labels_and_messages(labels, service):
             selected_message = messages[selected_message_index]
 
             message = service.users().messages().get(userId='me', id=selected_message['id'], format="full").execute()
+            print(json.dumps(service.users().messages().get(userId='me', id=selected_message['id'], format="full").execute(), indent=2))
             payload = message.get('payload', {})
             parts = payload.get('parts', [])
 
