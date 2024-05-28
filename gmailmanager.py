@@ -4,7 +4,8 @@ from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
-from googleapiclient.errors import HttpError
+from googleapiclient.errors import HttpError, Error
+import logging
 import pytz
 import wx
 import wx.html
@@ -329,49 +330,53 @@ def display_labels_and_messages(labels, service):
             message_listctrl.InsertItem(index, subject)
             message_listctrl.SetItemData(index, index)
 
-    def on_message_selected(event):
-        selected_message_index = message_listctrl.GetFirstSelected()
-        if selected_message_index == wx.NOT_FOUND:
-            return
-        selected_label_index = label_listctrl.GetFirstSelected()
-        selected_label_name, selected_label_color, selected_label_id = labels[selected_label_index]
-        messages = list_messages(service, selected_label_id)
-        selected_message = messages[selected_message_index]
+    logging.basicConfig(level=logging.DEBUG)
 
+    def on_message_selected(event):
         try:
+            selected_message_index = message_listctrl.GetFirstSelected()
+            if selected_message_index == wx.NOT_FOUND:
+                return
+
+            selected_label_index = label_listctrl.GetFirstSelected()
+            selected_label_name, selected_label_color, selected_label_id = labels[selected_label_index]
+            messages = list_messages(service, selected_label_id)
+            selected_message = messages[selected_message_index]
+
             message = service.users().messages().get(userId='me', id=selected_message['id'], format="full").execute()
             payload = message.get('payload', {})
             parts = payload.get('parts', [])
 
             def extract_html(parts):
                 for part in parts:
-                    if part.get('mimeType') == 'text/html':
+                    if 'mimeType' in part and part['mimeType'] == 'text/html':
                         if part.get('body') and part['body'].get('data'):
                             data = part['body']['data']
                             html_data = base64.urlsafe_b64decode(data).decode('utf-8')
                             return html_data
-                    elif 'data' in part['body']:
-                        data = part['body']['data']
-                        html_data = base64.urlsafe_b64decode(data).decode('utf-8')
-                        return html_data
-                    elif 'parts' in part:
-                        html_data = extract_html(part['parts'])
-                        if html_data:
+                        elif 'data' in part['body']:
+                            data = part['body']['data']
+                            html_data = base64.urlsafe_b64decode(data).decode('utf-8')
                             return html_data
+                        elif 'parts' in part:
+                            html_data = extract_html(part['parts'])
+                            if html_data:
+                                return html_data
                 return ''
 
             html_content = extract_html(parts)
 
             headers = {header['name']: header['value'] for header in payload.get('headers', [])}
             subject = headers.get('Subject', 'No Subject')
-            date = headers.get('Date', 'No Date')
-            fro = headers.get('From', 'No Sender')
-            to = headers.get('To', 'No Recipient')
+            date_str = headers.get('Date', 'No Date')
+            from_email = headers.get('From', 'No Sender')
+            to_emails = headers.get('To', 'No Recipient')
 
-            print(f"Subject: {subject}")
-            print(f"Date: {date}")
-            print(f"From: {fro}")
-            print(f"To: {to}")
+            # Afficher la chaîne de date brute
+            formatted_date = date_str
+
+            formatted_from = f"From: {from_email}"
+            formatted_to = f"To: {to_emails}"
 
             combined_html = f"""
             <html>
@@ -381,9 +386,9 @@ def display_labels_and_messages(labels, service):
             <body>
                 <h1>{subject}</h1>
                 <hr>
-                <h3>From: {fro}</h3>
-                <h3>To: {to}</h3>
-                <h3>Date: {date}</h3>
+                <h3>{formatted_date}</h3>
+                <h3>{formatted_from}</h3>
+                <h3>{formatted_to}</h3>
                 <hr>
                 {html_content}
             </body>
@@ -398,13 +403,13 @@ def display_labels_and_messages(labels, service):
                     reply_payload = reply.get('payload', {})
                     reply_parts = reply_payload.get('parts', [])
                     reply_html_content = extract_html(reply_parts)
-                    # Print the HTML content of the replies in the console
-                    print(f"Reply HTML Content: {reply_html_content}")
-                    combined_html += f"<hr>{reply_html_content}"
+                    reply_subject = reply_payload.get('subject', 'No Subject')
+                    combined_html += f"<hr><h2>Reply: {reply_subject}</h2>{reply_html_content}"
 
             message_content_html.SetPage(combined_html)
-        except HttpError as error:
-            wx.MessageBox(f"An error occurred: {error}", "Error", wx.OK | wx.ICON_ERROR)
+
+        except Error as error:
+            wx.MessageBox(f"An unexpected error occurred: {error}", "Error", wx.OK | wx.ICON_ERROR)
 
     label_listctrl.Bind(wx.EVT_LIST_ITEM_SELECTED, on_label_selected)
     message_listctrl.Bind(wx.EVT_LIST_ITEM_SELECTED, on_message_selected)
