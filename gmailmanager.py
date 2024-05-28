@@ -192,7 +192,7 @@ def new_message(event, service):
     subject_label = wx.StaticText(panel, label="Subject:")
     subject_text = wx.TextCtrl(panel, size=(600, -1))
     content_label = wx.StaticText(panel, label="Content:")
-    content_text = wx.TextCtrl(panel, style=wx.TE_MULTILINE, size=(800, 600))
+    content_text = wx.TextCtrl(panel, style=wx.TE_MULTILINE, size=(500, 400))
 
     send_button = wx.Button(panel, label="Send Message")
     save_draft_button = wx.Button(panel, label="Save Draft")
