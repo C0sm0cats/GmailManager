@@ -78,13 +78,30 @@ def list_labels(service):
         response = service.users().labels().list(userId='me').execute()
         labels = response['labels']
 
-        sorted_labels = sorted(labels, key=lambda x: x['name'].count('/'))
+        label_order = {
+            'system': 1,
+            'user': 2
+        }
 
-        filtered_labels = [label for label in sorted_labels if label['type'] == 'system']
-        filtered_labels += [label for label in sorted_labels if label['type'] != 'system' and label['labelListVisibility'] == 'labelShow']
+        sorted_labels = sorted(labels, key=lambda x: (label_order.get(x['type'], float('inf')), x['name']))
+
+        system_labels = []
+        other_system_labels = []
+        user_labels = []
+
+        for label in sorted_labels:
+            if label['name'].startswith('CATEGORY') or label['name'].startswith('CHAT'):
+                other_system_labels.append(label)
+            elif label['type'] == 'system':
+                system_labels.append(label)
+            else:
+                if label['labelListVisibility'] == 'labelShow':
+                    user_labels.append(label)
+
+        sorted_labels = system_labels + other_system_labels + user_labels
 
         label_data = []
-        for label in filtered_labels:
+        for label in sorted_labels:
             messages = list_messages(service, label['id'])
             num_messages = len(messages)
             label_name = f"{label['name']} ({num_messages})" if num_messages > 0 else label['name']
