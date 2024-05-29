@@ -177,21 +177,31 @@ def delete_message(event, message_listctrl, label_listctrl, labels, service, on_
         wx.MessageBox(f"An error occurred while deleting the message: {error}", "Error", wx.OK | wx.ICON_ERROR)
 
 
-def save_draft(event, service, to, subject_text, content_text):
+def save_draft(event, service, to_text, subject_text, content_text, label_listctrl, message_listctrl, labels):
     subject = subject_text.GetValue()
     content = content_text.GetValue()
 
     try:
-        message = create_message(to, subject, content)
+        message = create_message(to_text.GetValue(), subject, content)
         encoded_message = base64.urlsafe_b64encode(message.as_bytes()).decode()
         create_draft = {"message": {"raw": encoded_message}}
         service.users().drafts().create(userId="me", body=create_draft).execute()
         wx.MessageBox("Draft saved successfully.", "Draft Saved", wx.OK | wx.ICON_INFORMATION)
+
+        # Refresh the labels and messages
+        refresh_labels(event, label_listctrl, service)
+
+        # Find the index of the "DRAFT" label
+        draft_label_index = next((index for index, (label_name, _, label_id) in enumerate(labels) if label_id == 'DRAFT'), None)
+        if draft_label_index is not None:
+            label_listctrl.Select(draft_label_index)
+            refresh_message_list(message_listctrl, label_listctrl, service, labels)
+
     except Exception as e:
         wx.MessageBox(f"An error occurred while saving the draft: {e}", "Error", wx.OK | wx.ICON_ERROR)
 
 
-def new_message(event, service):
+def new_message(event, service, label_listctrl, message_listctrl, labels):
     dialog = wx.Dialog(None, title="New Message", size=(800, 600))
     dialog.Center()
 
@@ -234,7 +244,6 @@ def new_message(event, service):
             wx.MessageBox(f"An error occurred while sending the message: {e}", "Error", wx.OK | wx.ICON_ERROR)
 
     send_button.Bind(wx.EVT_BUTTON, on_send)
-    save_draft_button.Bind(wx.EVT_BUTTON, lambda event: save_draft(event, service, to_text, subject_text, content_text))
 
     def on_save_draft(event):
         to = to_text.GetValue()
@@ -244,7 +253,8 @@ def new_message(event, service):
         save_draft(event, service, to, subject_text, content_text)
 
     send_button.Bind(wx.EVT_BUTTON, on_send)
-    save_draft_button.Bind(wx.EVT_BUTTON, on_save_draft)
+    save_draft_button.Bind(wx.EVT_BUTTON, lambda event: save_draft(event, service, to_text, subject_text, content_text, label_listctrl, message_listctrl, labels))
+
 
     dialog.ShowModal()
 
@@ -322,7 +332,7 @@ def display_labels_and_messages(labels, service):
     panel.SetSizer(main_sizer)
     frame.Show()
 
-    frame.Bind(wx.EVT_TOOL, lambda event: new_message(event, service), id=tool_new_message.GetId())
+    frame.Bind(wx.EVT_TOOL, lambda event: new_message(event, service, label_listctrl, message_listctrl, labels), id=tool_new_message.GetId())
     frame.Bind(wx.EVT_TOOL, lambda event: refresh_labels(event, label_listctrl, service), id=tool_refresh.GetId())
     frame.Bind(wx.EVT_TOOL, lambda event: delete_message(event, message_listctrl, label_listctrl, labels, service, on_label_selected), id=tool_delete.GetId())
     frame.Bind(wx.EVT_TOOL, close_frame, id=tool_quit.GetId())
