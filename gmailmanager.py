@@ -12,7 +12,6 @@ import wx.html
 import wx.html2
 import wx.adv
 import json
-import html
 from email.message import EmailMessage
 
 # We need full access to delete emails
@@ -131,16 +130,14 @@ def refresh_labels(event, label_listctrl, service):
     label_listctrl.SetColumnWidth(0, wx.LIST_AUTOSIZE)
 
 
-def refresh_message_list(message_listctrl, label_listctrl, service):
+def refresh_message_list(message_listctrl, label_listctrl, service, labels):
     message_listctrl.DeleteAllItems()
 
     selected_label_index = label_listctrl.GetFirstSelected()
     if selected_label_index == wx.NOT_FOUND:
         return
-
-    selected_label_name = label_listctrl.GetItemText(selected_label_index)
-    selected_label_color = None  # Vous pouvez ajouter la couleur si nécessaire
-    selected_label_id = label_listctrl.GetItemData(selected_label_index)
+    selected_label_name, selected_label_color, selected_label_id = labels[selected_label_index]
+    selected_label_id = str(selected_label_id)  # Conversion de l'ID en chaîne de caractères
 
     messages = list_messages(service, selected_label_id)
 
@@ -152,20 +149,30 @@ def refresh_message_list(message_listctrl, label_listctrl, service):
     message_listctrl.SetColumnWidth(0, wx.LIST_AUTOSIZE)
 
 
-def delete_message(event, message_listctrl, label_listctrl, labels, service):
+def delete_message(event, message_listctrl, label_listctrl, labels, service, on_label_selected):
     selected_message_index = message_listctrl.GetFirstSelected()
     if selected_message_index == wx.NOT_FOUND:
         return
     selected_label_index = label_listctrl.GetFirstSelected()
     selected_label_name, selected_label_color, selected_label_id = labels[selected_label_index]
     messages = list_messages(service, selected_label_id)
-    selected_message = messages[selected_message_index]
-    message_id = selected_message['id']
+    if selected_message_index >= len(messages):
+        return
+    message_id = messages[selected_message_index]['id']
     try:
         service.users().messages().delete(userId='me', id=message_id).execute()
         wx.MessageBox("Message deleted successfully.", "Message Deleted", wx.OK | wx.ICON_INFORMATION)
-        # refresh_message_list(message_listctrl, label_listctrl, service)
-        # refresh_labels(event, label_listctrl, service)
+
+        # Refresh the label list
+        refresh_labels(event, label_listctrl, service)
+
+        # Re-select the active label
+        label_listctrl.Select(selected_label_index)
+
+        # Select the first message in the list for the active label
+        on_label_selected(event)
+        message_listctrl.Select(0)
+
     except HttpError as error:
         wx.MessageBox(f"An error occurred while deleting the message: {error}", "Error", wx.OK | wx.ICON_ERROR)
 
@@ -317,7 +324,7 @@ def display_labels_and_messages(labels, service):
 
     frame.Bind(wx.EVT_TOOL, lambda event: new_message(event, service), id=tool_new_message.GetId())
     frame.Bind(wx.EVT_TOOL, lambda event: refresh_labels(event, label_listctrl, service), id=tool_refresh.GetId())
-    frame.Bind(wx.EVT_TOOL, lambda event: delete_message(event, message_listctrl, label_listctrl, labels, service), id=tool_delete.GetId())
+    frame.Bind(wx.EVT_TOOL, lambda event: delete_message(event, message_listctrl, label_listctrl, labels, service, on_label_selected), id=tool_delete.GetId())
     frame.Bind(wx.EVT_TOOL, close_frame, id=tool_quit.GetId())
 
     def on_label_selected(event):
@@ -331,6 +338,7 @@ def display_labels_and_messages(labels, service):
             subject = get_message_subject(service, message['id'])
             message_listctrl.InsertItem(index, subject)
             message_listctrl.SetItemData(index, index)
+        message_listctrl.SetColumnWidth(0, wx.LIST_AUTOSIZE)
 
     logging.basicConfig(level=logging.DEBUG)
 
