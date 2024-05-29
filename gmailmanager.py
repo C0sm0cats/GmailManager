@@ -121,8 +121,12 @@ def refresh_labels(event, label_listctrl, service):
 
     labels = list_labels(service)
 
+    image_list, icons = load_icons()
+    label_listctrl.AssignImageList(image_list, wx.IMAGE_LIST_SMALL)
+
     for index, (label_name, label_color, label_id) in enumerate(labels):
-        label_listctrl.InsertItem(index, label_name)
+        icon_id = icons.get(label_id, -1)
+        label_listctrl.InsertItem(index, label_name, icon_id)
         if label_color is not None:
             label_listctrl.SetItemTextColour(index, label_color)
         label_listctrl.SetItemData(index, index)
@@ -137,7 +141,7 @@ def refresh_message_list(message_listctrl, label_listctrl, service, labels):
     if selected_label_index == wx.NOT_FOUND:
         return
     selected_label_name, selected_label_color, selected_label_id = labels[selected_label_index]
-    selected_label_id = str(selected_label_id)  # Conversion de l'ID en chaîne de caractères
+    selected_label_id = str(selected_label_id)
 
     messages = list_messages(service, selected_label_id)
 
@@ -294,6 +298,29 @@ def send_message(service, message, label_listctrl, message_listctrl, labels):
         refresh_message_list(message_listctrl, label_listctrl, service, labels)
 
 
+def load_icons():
+    icon_ids = {
+        'INBOX': wx.ART_GO_DIR_UP,
+        'SENT': wx.ART_FILE_SAVE,
+        'DRAFT': wx.ART_COPY,
+        'TRASH': wx.ART_DELETE,
+        'SPAM': wx.ART_ERROR,
+        'IMPORTANT': wx.ART_WARNING,
+        'STARRED': wx.ART_ADD_BOOKMARK,
+        'UNREAD': wx.ART_TICK_MARK,
+    }
+
+    icons = {}
+    image_list = wx.ImageList(16, 16)  # Liste des images pour les icônes
+
+    for label, art_id in icon_ids.items():
+        icon = wx.ArtProvider.GetBitmap(art_id, wx.ART_TOOLBAR, (16, 16))
+        icon_id = image_list.Add(icon)
+        icons[label] = icon_id
+
+    return image_list, icons
+
+
 def display_labels_and_messages(labels, service):
     global frame
 
@@ -330,8 +357,13 @@ def display_labels_and_messages(labels, service):
 
     label_listctrl = wx.ListCtrl(vertical_splitter, style=wx.LC_REPORT | wx.LC_SINGLE_SEL)
     label_listctrl.InsertColumn(0, 'Labels', width=200)
+
+    image_list, icons = load_icons()
+    label_listctrl.AssignImageList(image_list, wx.IMAGE_LIST_SMALL)
+
     for index, (label_name, label_color, label_id) in enumerate(labels):
-        label_listctrl.InsertItem(index, label_name)
+        icon_id = icons.get(label_id, -1)
+        label_listctrl.InsertItem(index, label_name, icon_id)
         if label_color is not None:
             label_listctrl.SetItemTextColour(index, label_color)
         label_listctrl.SetItemData(index, index)
