@@ -177,6 +177,19 @@ def delete_message(event, message_listctrl, label_listctrl, labels, service, on_
         wx.MessageBox(f"An error occurred while deleting the message: {error}", "Error", wx.OK | wx.ICON_ERROR)
 
 
+def empty_trash(event, service, label_listctrl, message_listctrl, labels):
+    try:
+        trash_label_id = 'TRASH'
+        messages = list_messages(service, trash_label_id)  # Modification ici
+        for message in messages:
+            service.users().messages().delete(userId='me', id=message['id']).execute()
+        wx.MessageBox("Trash emptied successfully.", "Trash Emptied", wx.OK | wx.ICON_INFORMATION)
+        refresh_labels(event, label_listctrl, service)
+        refresh_message_list(message_listctrl, label_listctrl, service, labels)
+    except HttpError as error:
+        wx.MessageBox(f"An error occurred while emptying the trash: {error}", "Error", wx.OK | wx.ICON_ERROR)
+
+
 def save_draft(event, service, to_text, subject_text, content_text, label_listctrl, message_listctrl, labels):
     subject = subject_text.GetValue()
     content = content_text.GetValue()
@@ -301,6 +314,10 @@ def display_labels_and_messages(labels, service):
     delete_icon = wx.ArtProvider.GetBitmap(wx.ART_DELETE, wx.ART_TOOLBAR, wx.Size(16, 16))
     tool_delete = toolbar.AddTool(wx.ID_ANY, "Delete", delete_icon)
 
+    empty_trash_icon = wx.ArtProvider.GetBitmap(wx.ART_DELETE, wx.ART_TOOLBAR, wx.Size(16, 16))
+    tool_empty_trash = toolbar.AddTool(wx.ID_ANY, "Empty Trash", empty_trash_icon)
+    toolbar.Realize()
+
     quit_icon = wx.ArtProvider.GetBitmap(wx.ART_QUIT, wx.ART_TOOLBAR, wx.Size(16, 16))
     tool_quit = toolbar.AddTool(wx.ID_ANY, "Quit", quit_icon)
     toolbar.Realize()
@@ -342,6 +359,7 @@ def display_labels_and_messages(labels, service):
     frame.Bind(wx.EVT_TOOL, lambda event: new_message(event, service, label_listctrl, message_listctrl, labels), id=tool_new_message.GetId())
     frame.Bind(wx.EVT_TOOL, lambda event: refresh_labels(event, label_listctrl, service), id=tool_refresh.GetId())
     frame.Bind(wx.EVT_TOOL, lambda event: delete_message(event, message_listctrl, label_listctrl, labels, service, on_label_selected), id=tool_delete.GetId())
+    frame.Bind(wx.EVT_TOOL, lambda event: empty_trash(event, service, label_listctrl, message_listctrl, labels), id=tool_empty_trash.GetId())
     frame.Bind(wx.EVT_TOOL, close_frame, id=tool_quit.GetId())
 
     def on_label_selected(event):
