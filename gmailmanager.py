@@ -237,24 +237,21 @@ def new_message(event, service, label_listctrl, message_listctrl, labels):
 
         try:
             message = create_message(to, subject, content)
-            send_message(service, message)
+            send_message(service, message, label_listctrl, message_listctrl, labels)
             wx.MessageBox("Message sent successfully.", "Message Sent", wx.OK | wx.ICON_INFORMATION)
             dialog.Close()
         except Exception as e:
             wx.MessageBox(f"An error occurred while sending the message: {e}", "Error", wx.OK | wx.ICON_ERROR)
-
-    send_button.Bind(wx.EVT_BUTTON, on_send)
 
     def on_save_draft(event):
         to = to_text.GetValue()
         subject = subject_text.GetValue()
         content = content_text.GetValue()
 
-        save_draft(event, service, to, subject_text, content_text)
+        save_draft(event, service, to, subject_text, content_text, label_listctrl, message_listctrl, labels)
 
     send_button.Bind(wx.EVT_BUTTON, on_send)
     save_draft_button.Bind(wx.EVT_BUTTON, lambda event: save_draft(event, service, to_text, subject_text, content_text, label_listctrl, message_listctrl, labels))
-
 
     dialog.ShowModal()
 
@@ -268,10 +265,20 @@ def create_message(to, subject, content):
     return message
 
 
-def send_message(service, message):
+def send_message(service, message, label_listctrl, message_listctrl, labels):
     encoded_message = base64.urlsafe_b64encode(message.as_bytes()).decode()
     create_message = {"raw": encoded_message}
     service.users().messages().send(userId="me", body=create_message).execute()
+    wx.MessageBox("Message sent successfully.", "Message Sent", wx.OK | wx.ICON_INFORMATION)
+
+    # Refresh the labels and messages
+    refresh_labels(None, label_listctrl, service)
+
+    # Find the index of the "SENT" label
+    sent_label_index = next((index for index, (label_name, _, label_id) in enumerate(labels) if label_id == 'SENT'), None)
+    if sent_label_index is not None:
+        label_listctrl.Select(sent_label_index)
+        refresh_message_list(message_listctrl, label_listctrl, service, labels)
 
 
 def display_labels_and_messages(labels, service):
