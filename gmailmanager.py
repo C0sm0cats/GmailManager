@@ -285,7 +285,7 @@ def display_labels_and_messages(labels, service):
     global frame
 
     app = wx.App()
-    frame = wx.Frame(None, title="Gmail", size=(1200, 800))
+    frame = wx.Frame(None, title="GmailManager", size=(1200, 800))
 
     toolbar = frame.CreateToolBar(style=wx.TB_HORIZONTAL | wx.TB_TEXT)
     toolbar.SetToolBitmapSize(wx.Size(16, 16))
@@ -322,7 +322,7 @@ def display_labels_and_messages(labels, service):
     horizontal_splitter = wx.SplitterWindow(vertical_splitter)
 
     message_listctrl = wx.ListCtrl(horizontal_splitter, style=wx.LC_REPORT | wx.LC_SINGLE_SEL)
-    message_listctrl.InsertColumn(0, 'Mail', width=2540)
+    message_listctrl.InsertColumn(0, 'Messages', width=2540)
 
     message_content_html = wx.html.HtmlWindow(horizontal_splitter)
 
