@@ -151,6 +151,7 @@ def refresh_message_list(message_listctrl, label_listctrl, service, labels):
         message_listctrl.SetItemData(index, index)
 
     message_listctrl.SetColumnWidth(0, wx.LIST_AUTOSIZE)
+    message_listctrl.SetColumnWidth(0, max(message_listctrl.GetColumnWidth(0), 200))
 
 
 def delete_message(event, message_listctrl, label_listctrl, labels, service, on_label_selected):
@@ -406,6 +407,7 @@ def display_labels_and_messages(labels, service):
             message_listctrl.InsertItem(index, subject)
             message_listctrl.SetItemData(index, index)
         message_listctrl.SetColumnWidth(0, wx.LIST_AUTOSIZE)
+        message_listctrl.SetColumnWidth(0, max(message_listctrl.GetColumnWidth(0), 200))
 
     logging.basicConfig(level=logging.DEBUG)
 
