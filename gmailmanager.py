@@ -133,7 +133,10 @@ def get_message_subject(service, message_id):
         wx.MessageBox(f"An error occurred: {error}", "Error", wx.OK | wx.ICON_ERROR)
 
 
-def refresh_labels(event, label_listctrl, service):
+def refresh_labels(event, message_listctrl, label_listctrl, service):
+    # Remember the index of the selected label before refreshing
+    selected_label_index = label_listctrl.GetFirstSelected()
+
     label_listctrl.DeleteAllItems()
 
     labels = list_labels(service)
@@ -149,6 +152,13 @@ def refresh_labels(event, label_listctrl, service):
         label_listctrl.SetItemData(index, index)
 
     label_listctrl.SetColumnWidth(0, wx.LIST_AUTOSIZE)
+
+    # Restore the selected label if there was one before refreshing
+    if selected_label_index != wx.NOT_FOUND:
+        label_listctrl.Select(selected_label_index)
+
+    # Refresh messages for the selected label after refreshing labels
+    refresh_message_list(message_listctrl, label_listctrl, service, labels)
 
 
 def refresh_message_list(message_listctrl, label_listctrl, service, labels):
@@ -186,7 +196,7 @@ def delete_message(event, message_listctrl, label_listctrl, labels, service, on_
         wx.MessageBox("Message deleted successfully.", "Message Deleted", wx.OK | wx.ICON_INFORMATION)
 
         # Refresh the label list
-        refresh_labels(event, label_listctrl, service)
+        refresh_labels(event, message_listctrl, label_listctrl, service)
 
         # Re-select the active label
         label_listctrl.Select(selected_label_index)
@@ -206,7 +216,7 @@ def empty_trash(event, service, label_listctrl, message_listctrl, labels):
         for message in messages:
             service.users().messages().delete(userId='me', id=message['id']).execute()
         wx.MessageBox("Trash emptied successfully.", "Trash Emptied", wx.OK | wx.ICON_INFORMATION)
-        refresh_labels(event, label_listctrl, service)
+        refresh_labels(event, message_listctrl, label_listctrl, service)
         refresh_message_list(message_listctrl, label_listctrl, service, labels)
     except HttpError as error:
         wx.MessageBox(f"An error occurred while emptying the trash: {error}", "Error", wx.OK | wx.ICON_ERROR)
@@ -224,7 +234,7 @@ def save_draft(event, service, to_text, subject_text, content_text, label_listct
         wx.MessageBox("Draft saved successfully.", "Draft Saved", wx.OK | wx.ICON_INFORMATION)
 
         # Refresh the labels and messages
-        refresh_labels(event, label_listctrl, service)
+        refresh_labels(event, message_listctrl, label_listctrl, service)
 
         # Find the index of the "DRAFT" label
         draft_label_index = next((index for index, (label_name, _, label_id) in enumerate(labels) if label_id == 'DRAFT'), None)
@@ -307,7 +317,7 @@ def send_message(service, message, label_listctrl, message_listctrl, labels):
     wx.MessageBox("Message sent successfully.", "Message Sent", wx.OK | wx.ICON_INFORMATION)
 
     # Refresh the labels and messages
-    refresh_labels(None, label_listctrl, service)
+    refresh_labels(None, message_listctrl, label_listctrl, service)
 
     # Find the index of the "SENT" label
     sent_label_index = next((index for index, (label_name, _, label_id) in enumerate(labels) if label_id == 'SENT'), None)
@@ -407,7 +417,7 @@ def display_labels_and_messages(labels, service):
     frame.Show()
 
     frame.Bind(wx.EVT_TOOL, lambda event: new_message(event, service, label_listctrl, message_listctrl, labels), id=tool_new_message.GetId())
-    frame.Bind(wx.EVT_TOOL, lambda event: refresh_labels(event, label_listctrl, service), id=tool_refresh.GetId())
+    frame.Bind(wx.EVT_TOOL, lambda event: refresh_labels(event, message_listctrl, label_listctrl, service), id=tool_refresh.GetId())
     frame.Bind(wx.EVT_TOOL, lambda event: delete_message(event, message_listctrl, label_listctrl, labels, service, on_label_selected), id=tool_delete.GetId())
     frame.Bind(wx.EVT_TOOL, lambda event: empty_trash(event, service, label_listctrl, message_listctrl, labels), id=tool_empty_trash.GetId())
     frame.Bind(wx.EVT_TOOL, close_frame, id=tool_quit.GetId())
