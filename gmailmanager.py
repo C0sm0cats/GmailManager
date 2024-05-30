@@ -144,6 +144,8 @@ def refresh_labels(event, message_listctrl, label_listctrl, service):
     image_list, icons = load_icons()
     label_listctrl.AssignImageList(image_list, wx.IMAGE_LIST_SMALL)
 
+    labels.sort(key=lambda x: label_order.get(x[2], float('inf')))
+
     for index, (label_name, label_color, label_id) in enumerate(labels):
         icon_id = icons.get(label_id, -1)
         label_listctrl.InsertItem(index, label_name, icon_id)
@@ -330,12 +332,12 @@ def load_icons():
     icon_ids = {
         'INBOX': wx.ART_GO_DIR_UP,
         'SENT': wx.ART_FILE_SAVE,
+        'STARRED': wx.ART_ADD_BOOKMARK,
+        'IMPORTANT': wx.ART_WARNING,
+        'UNREAD': wx.ART_TICK_MARK,
         'DRAFT': wx.ART_COPY,
         'TRASH': wx.ART_DELETE,
         'SPAM': wx.ART_ERROR,
-        'IMPORTANT': wx.ART_WARNING,
-        'STARRED': wx.ART_ADD_BOOKMARK,
-        'UNREAD': wx.ART_TICK_MARK,
     }
 
     icons = {}
@@ -347,6 +349,17 @@ def load_icons():
         icons[label] = icon_id
 
     return image_list, icons
+
+label_order = {
+    'INBOX': 1,
+    'SENT': 2,
+    'STARRED': 3,
+    'IMPORTANT': 4,
+    'UNREAD': 5,
+    'DRAFT': 6,
+    'TRASH': 7,
+    'SPAM': 8,
+}
 
 
 def display_labels_and_messages(labels, service):
@@ -388,6 +401,8 @@ def display_labels_and_messages(labels, service):
 
     image_list, icons = load_icons()
     label_listctrl.AssignImageList(image_list, wx.IMAGE_LIST_SMALL)
+
+    labels.sort(key=lambda x: label_order.get(x[2], float('inf')))
 
     for index, (label_name, label_color, label_id) in enumerate(labels):
         icon_id = icons.get(label_id, -1)
