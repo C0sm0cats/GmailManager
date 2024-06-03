@@ -456,13 +456,30 @@ class GmailManager(QtWidgets.QMainWindow):
             else:
                 print(f"Le libellé '{select_label}' n'a pas été trouvé.")
 
-        # Get the name of the selected label after refreshing
-        selected_items = self.label_list.selectedItems()
-        if selected_items:
-            current_label_name = selected_items[0].text()
-            #print("Label after :", current_label_name)
-        #else:
-            #print("No label selected after refreshing")
+        # # Debug - Get the name of the selected label after refreshing
+        # selected_items = self.label_list.selectedItems()
+        # if selected_items:
+        #     current_label_name = selected_items[0].text()
+        #     print("Label after :", current_label_name)
+        # else:
+        #     print("No label selected after refreshing")
+        # # End Debug
+
+        # Check if there are any messages left in the list of UNREAD
+        # Search for the first label starting with "UNREAD" in the list of labels in the user interface
+        unread_label_id = None
+        for index in range(self.label_list.count()):
+            label_item = self.label_list.item(index)
+            label_name = label_item.text()
+            if re.match(r'^UNREAD', label_name, re.IGNORECASE):
+                unread_label_id = label_item.data(QtCore.Qt.UserRole)
+                break
+        if unread_label_id:
+            unread_messages = list_messages(self.service, unread_label_id)
+            if len(unread_messages) > 0:
+                # Disable the action if no UNREAD messages are detected
+                self.unread_message_action.setEnabled(True)
+                self.unread_message_action.setText(f"UNREAD Messages Received")
 
     def find_label_item(self, label_name):
         for item in self.label_list.findItems(label_name, QtCore.Qt.MatchRegExp):
