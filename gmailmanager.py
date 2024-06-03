@@ -477,7 +477,7 @@ class GmailManager(QtWidgets.QMainWindow):
         if unread_label_id:
             unread_messages = list_messages(self.service, unread_label_id)
             if len(unread_messages) > 0:
-                # Disable the action if no UNREAD messages are detected
+                # If UNREAD messages are found in the UNREAD label, update the notification icon
                 self.unread_message_action.setEnabled(True)
                 self.unread_message_action.setText(f"UNREAD Messages Received")
 
