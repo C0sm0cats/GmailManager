@@ -429,7 +429,7 @@ class GmailManager(QtWidgets.QMainWindow):
 
         # Try to retrieve the label by its name
         if previous_label_name:
-            #print("Nom du label précédemment actif:", previous_label_name)
+            #print("Name of the previously active label :", previous_label_name)
             escaped_previous_label_name = re.escape(previous_label_name)
             escaped_previous_label_name = escaped_previous_label_name.replace('\\(', '\\(').replace('\\)', '\\)')
             previous_item = self.find_label_item(escaped_previous_label_name)
@@ -437,7 +437,7 @@ class GmailManager(QtWidgets.QMainWindow):
                 previous_index = self.label_list.indexFromItem(previous_item).row()
 
         # Restore the selection of the previously active label by index
-        #print("Index de la ligne rétablie après le rafraîchissement :", previous_index)
+        #print("Index of the restored row after refreshing :", previous_index)
         self.label_list.setCurrentRow(previous_index)
 
         # Search for and select the specified label
@@ -499,7 +499,7 @@ class GmailManager(QtWidgets.QMainWindow):
 
             # Check if the subject of the message is in the list of subjects of unread messages
             if subject in unread_message_subjects:
-                item.setForeground(QtGui.QColor(0, 0, 139))  # Bleu foncé pour les messages non lus
+                item.setForeground(QtGui.QColor(0, 0, 139))  # Dark blue for unread messages
                 font = item.font()  # Get the current font of the item.
                 font.setBold(True)
                 item.setFont(font)  # Apply the modified font to the item.
