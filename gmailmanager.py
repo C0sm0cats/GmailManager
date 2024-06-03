@@ -554,10 +554,20 @@ class GmailManager(QtWidgets.QMainWindow):
             print("Message marked as read successfully.")
             # Refresh the labels to update the list of unread messages
             self.refresh_labels()
-            # Check if there are any messages left in the list
-            if self.message_list.count() == 0:
-                # Disable the action if no UNREAD messages are detected
-                self.unread_message_action.setEnabled(False)
+            # Check if there are any messages left in the list of UNREAD
+            # Search for the first label starting with "UNREAD" in the list of labels in the user interface
+            unread_label_id = None
+            for index in range(self.label_list.count()):
+                label_item = self.label_list.item(index)
+                label_name = label_item.text()
+                if re.match(r'^UNREAD', label_name, re.IGNORECASE):
+                    unread_label_id = label_item.data(QtCore.Qt.UserRole)
+                    break
+            if unread_label_id:
+                unread_messages = list_messages(self.service, unread_label_id)
+                if len(unread_messages) == 0:
+                    # Disable the action if no UNREAD messages are detected
+                    self.unread_message_action.setEnabled(False)
         except HttpError as error:
             QtWidgets.QMessageBox.critical(None, "Error", f"An error occurred while marking the message as read: {error}")
 
