@@ -280,11 +280,9 @@ class GmailManager(QtWidgets.QMainWindow):
             inbox_index = self.label_list.indexFromItem(inbox_item).row()
             self.label_list.setCurrentRow(inbox_index)
 
-        # Ajoutez le menu déroulant dans la barre de menus pour sélectionner la fréquence de vérification
+        # Add the dropdown menu to the menu bar to select the check frequency.
         menubar = self.menuBar()
         self.frequency_menu = menubar.addMenu('Set Check Frequency')
-
-        # Add the dropdown menu to the menu bar to select the check frequency
         self.one_minute_action = QtWidgets.QAction('1 minute', self)
         self.two_minutes_action = QtWidgets.QAction('2 minutes', self)
         self.three_minutes_action = QtWidgets.QAction('3 minutes', self)
@@ -407,7 +405,7 @@ class GmailManager(QtWidgets.QMainWindow):
         self.label_list.clear()
         self.labels = list_labels(self.service)
 
-        # Charger les icônes
+        # Load the icons
         icons = load_icons()
 
         for label_name, label_color, label_id, font in self.labels:
@@ -426,7 +424,7 @@ class GmailManager(QtWidgets.QMainWindow):
 
         # Adjust the size of splitter1 based on the maximum length of the labels
         max_label_length = max([self.label_list.fontMetrics().boundingRect(label[0]).width() for label in self.labels])
-        self.label_list.setFixedWidth(max_label_length + 40)  # Ajouter une marge pour un peu d'espace supplémentaire
+        self.label_list.setFixedWidth(max_label_length + 40)  # Add a margin for some extra space.
         self.splitter1.setSizes([max_label_length + 20, self.width() - max_label_length - 20])
 
         # Try to retrieve the label by its name
@@ -502,9 +500,9 @@ class GmailManager(QtWidgets.QMainWindow):
             # Check if the subject of the message is in the list of subjects of unread messages
             if subject in unread_message_subjects:
                 item.setForeground(QtGui.QColor(0, 0, 139))  # Bleu foncé pour les messages non lus
-                font = item.font()  # Obtenir la police actuelle de l'élément
-                font.setBold(True)  # Mettre en gras la police
-                item.setFont(font)  # Appliquer la police modifiée à l'élément
+                font = item.font()  # Get the current font of the item.
+                font.setBold(True)
+                item.setFont(font)  # Apply the modified font to the item.
 
             self.message_list.addItem(item)
 
