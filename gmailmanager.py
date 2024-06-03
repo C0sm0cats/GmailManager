@@ -396,11 +396,11 @@ class GmailManager(QtWidgets.QMainWindow):
         selected_items = self.label_list.selectedItems()
         if selected_items:
             previous_label_name = selected_items[0].text()  # Save the name of the previous label
-            #print("Label avant :", previous_label_name)
+            #print("Label before :", previous_label_name)
         #else:
-            #print("Aucun label sélectionné avant le rafraîchissement")
+            #print("No label selected before refreshing")
 
-        #print("Index de la ligne précédemment sélectionnée avant le rafraîchissement :", previous_index)
+        #print("Index of the previously selected row before refreshing :", previous_index)
 
         self.label_list.clear()
         self.labels = list_labels(self.service)
@@ -460,9 +460,9 @@ class GmailManager(QtWidgets.QMainWindow):
         selected_items = self.label_list.selectedItems()
         if selected_items:
             current_label_name = selected_items[0].text()
-            #print("Label après :", current_label_name)
+            #print("Label after :", current_label_name)
         #else:
-            #print("Aucun label sélectionné après le rafraîchissement")
+            #print("No label selected after refreshing")
 
     def find_label_item(self, label_name):
         for item in self.label_list.findItems(label_name, QtCore.Qt.MatchRegExp):
