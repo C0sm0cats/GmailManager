@@ -28,13 +28,13 @@ Before using GmailManager, ensure you have the following:
    - `google-auth-oauthlib`: Library for OAuth2 authentication with Google.
    - `google-api-python-client`: Library for using Google APIs in Python.
    - `pytz`: Library for managing timezones in Python.
-   - `wx`: Alias for `wxPython`, a GUI library for creating multi-platform desktop applications.
+   - `PyQt5`: Une bibliothèque pour créer des applications de bureau multiplateformes à l'aide de l'interface graphique PyQt5.
    - `email`: Python standard module for email manipulation.
 
   Make sure to install these dependencies before running your GmailManager script.
 
 - [Google API Client Library for Python](https://github.com/googleapis/google-api-python-client)
-- [wxPython](https://www.wxpython.org/)
+- [PyQt](https://riverbankcomputing.com/software/pyqt/intro)
 
 
 ## Installation

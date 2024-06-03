@@ -1,23 +1,25 @@
 import os
 import base64
+import mimetypes
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
-from googleapiclient.errors import HttpError, Error
+from googleapiclient.errors import HttpError
 import logging
-import pytz
-import wx
-import wx.html
-import wx.html2
-import wx.adv
 import json
+import pytz
 from email.message import EmailMessage
+from PyQt5 import QtWidgets, QtGui, QtCore
+from PyQt5.QtCore import QTimer
+import sys
+import re
+
+#logging.basicConfig(level=logging.DEBUG)
 
 # We need full access to delete emails
 SCOPES = ["https://mail.google.com/"]
 # SCOPES = ["https://www.googleapis.com/auth/gmail.readonly", "https://www.googleapis.com/auth/gmail.modify"]
-
 
 def convert_expiry_to_paris_time(expiry_utc):
     utc_timezone = pytz.utc
@@ -69,8 +71,24 @@ def authenticate():
     return creds
 
 
-def close_frame(event):
-    frame.Close()
+def load_icons():
+    icon_ids = {
+        'INBOX': 'icons/inbox.png',
+        'SENT': 'icons/sent.png',
+        'STARRED': 'icons/starred.png',
+        'IMPORTANT': 'icons/important.png',
+        'UNREAD': 'icons/unread.png',
+        'DRAFT': 'icons/draft.png',
+        'TRASH': 'icons/trash.png',
+        'SPAM': 'icons/spam.png',
+    }
+
+    icons = {}
+    for label, icon_path in icon_ids.items():
+        icon = QtGui.QIcon(icon_path)
+        icons[label] = icon
+
+    return icons
 
 
 def list_labels(service):
@@ -79,39 +97,72 @@ def list_labels(service):
         labels = response['labels']
 
         label_order = {
-            'system': 1,
-            'user': 2
+            'INBOX': 1,
+            'SENT': 2,
+            'STARRED': 3,
+            'IMPORTANT': 4,
+            'UNREAD': 5,
+            'DRAFT': 6,
+            'TRASH': 7,
+            'SPAM': 8,
+            'system': 100,
+            'user': 200
         }
 
-        sorted_labels = sorted(labels, key=lambda x: (label_order.get(x['type'], float('inf')), x['name']))
+        def sort_key(label):
+            # Sort priority by specific order then by type
+            order = label_order.get(label['name'].upper(), float('inf'))
+            type_order = label_order.get(label['type'], float('inf'))
 
-        system_labels = []
-        other_system_labels = []
-        user_labels = []
+            # If the type is 'user', sort by name and subname
+            if label['type'] == 'user':
+                parts = label['name'].split('/')
+                # Use tuples to sort by multiple levels
+                return (type_order, parts[0], parts[1] if len(parts) > 1 else '')
+            return (type_order, order)
 
-        for label in sorted_labels:
-            if label['name'].startswith('CATEGORY') or label['name'].startswith('CHAT'):
-                other_system_labels.append(label)
-            elif label['type'] == 'system':
-                system_labels.append(label)
-            else:
-                if label['labelListVisibility'] == 'labelShow':
-                    user_labels.append(label)
-
-        sorted_labels = system_labels + other_system_labels + user_labels
+        sorted_labels = sorted(labels, key=sort_key)
 
         label_data = []
+        unread_message_subjects = []
+
+        # Collect the subjects of the UNREAD messages
+        unread_label_id = None
+        for label in sorted_labels:
+            if label['name'].upper() == 'UNREAD':
+                unread_label_id = label['id']
+                break
+
+        if unread_label_id:
+            unread_messages = list_messages(service, unread_label_id)
+            unread_message_subjects = [get_message_subject(service, message['id']) for message in unread_messages]
+
         for label in sorted_labels:
             messages = list_messages(service, label['id'])
             num_messages = len(messages)
             label_name = f"{label['name']} ({num_messages})" if num_messages > 0 else label['name']
-            color = wx.Colour(0, 191, 255) if num_messages > 0 else None
-            label_data.append((label_name, color, label['id']))
+
+            has_unread_messages = any(subject in unread_message_subjects for subject in [get_message_subject(service, message['id']) for message in messages])
+            unread_messages_count = sum(1 for message in messages if get_message_subject(service, message['id']) in unread_message_subjects)
+
+            if has_unread_messages:
+                if unread_messages_count > 0:
+                    if not re.search(r'\bUNREAD\b', label['name'], re.IGNORECASE):
+                        label_name += f" | Unread {unread_messages_count}"
+                color = QtGui.QColor(0, 0, 139)  # Dark blue
+                font = QtGui.QFont()
+                font.setBold(True)
+            else:
+                color = QtGui.QColor(0, 0, 0)
+                font = QtGui.QFont()
+                font.setBold(False)
+
+            label_data.append((label_name, color, label['id'], font))
 
         return label_data
 
     except HttpError as error:
-        wx.MessageBox(f"An error occurred: {error}", "Error", wx.OK | wx.ICON_ERROR)
+        QtWidgets.QMessageBox.critical(None, "Error", f"An error occurred: {error}")
 
 
 def list_messages(service, label_id):
@@ -120,466 +171,659 @@ def list_messages(service, label_id):
         messages = response.get('messages', [])
         return messages
     except HttpError as error:
-        wx.MessageBox(f"An error occurred: {error}", "Error", wx.OK | wx.ICON_ERROR)
+        QtWidgets.QMessageBox.critical(None, "Error", f"An error occurred: {error}")
+        return []
 
 
 def get_message_subject(service, message_id):
     try:
         msg = service.users().messages().get(userId='me', id=message_id).execute()
         headers = msg['payload']['headers']
-        subject = next((header['value'] for header in headers if header['name'] == 'Subject'), 'Aucun sujet')
+        subject = next((header['value'] for header in headers if header['name'] == 'Subject'), 'No Subject')
         return subject
     except HttpError as error:
-        wx.MessageBox(f"An error occurred: {error}", "Error", wx.OK | wx.ICON_ERROR)
+        QtWidgets.QMessageBox.critical(None, "Error", f"An error occurred: {error}")
+        return 'No Subject'
 
 
-def refresh_labels(event, message_listctrl, label_listctrl, service):
-    # Remember the index of the selected label before refreshing
-    selected_label_index = label_listctrl.GetFirstSelected()
+class GmailManager(QtWidgets.QMainWindow):
+    custom_interval = None
 
-    label_listctrl.DeleteAllItems()
-
-    labels = list_labels(service)
-
-    image_list, icons = load_icons()
-    label_listctrl.AssignImageList(image_list, wx.IMAGE_LIST_SMALL)
-
-    labels.sort(key=lambda x: label_order.get(x[2], float('inf')))
-
-    for index, (label_name, label_color, label_id) in enumerate(labels):
-        icon_id = icons.get(label_id, -1)
-        label_listctrl.InsertItem(index, label_name, icon_id)
-        if label_color is not None:
-            label_listctrl.SetItemTextColour(index, label_color)
-        label_listctrl.SetItemData(index, index)
-
-    label_listctrl.SetColumnWidth(0, wx.LIST_AUTOSIZE)
-
-    # Restore the selected label if there was one before refreshing
-    if selected_label_index != wx.NOT_FOUND:
-        label_listctrl.Select(selected_label_index)
-
-    # Refresh messages for the selected label after refreshing labels
-    refresh_message_list(message_listctrl, label_listctrl, service, labels)
-
-
-def refresh_message_list(message_listctrl, label_listctrl, service, labels):
-    message_listctrl.DeleteAllItems()
-
-    selected_label_index = label_listctrl.GetFirstSelected()
-    if selected_label_index == wx.NOT_FOUND:
-        return
-    selected_label_name, selected_label_color, selected_label_id = labels[selected_label_index]
-    selected_label_id = str(selected_label_id)
-
-    messages = list_messages(service, selected_label_id)
-
-    for index, message in enumerate(messages):
-        subject = get_message_subject(service, message['id'])
-        message_listctrl.InsertItem(index, subject)
-        message_listctrl.SetItemData(index, index)
-
-    message_listctrl.SetColumnWidth(0, wx.LIST_AUTOSIZE)
-    message_listctrl.SetColumnWidth(0, max(message_listctrl.GetColumnWidth(0), 200))
-
-
-def delete_message(event, message_listctrl, label_listctrl, labels, service, on_label_selected):
-    selected_message_index = message_listctrl.GetFirstSelected()
-    if selected_message_index == wx.NOT_FOUND:
-        return
-    selected_label_index = label_listctrl.GetFirstSelected()
-    selected_label_name, selected_label_color, selected_label_id = labels[selected_label_index]
-    messages = list_messages(service, selected_label_id)
-    if selected_message_index >= len(messages):
-        return
-    message_id = messages[selected_message_index]['id']
-    try:
-        service.users().messages().delete(userId='me', id=message_id).execute()
-        wx.MessageBox("Message deleted successfully.", "Message Deleted", wx.OK | wx.ICON_INFORMATION)
-
-        # Refresh the label list
-        refresh_labels(event, message_listctrl, label_listctrl, service)
-
-        # Re-select the active label
-        label_listctrl.Select(selected_label_index)
-
-        # Select the first message in the list for the active label
-        on_label_selected(event)
-        message_listctrl.Select(0)
-
-    except HttpError as error:
-        wx.MessageBox(f"An error occurred while deleting the message: {error}", "Error", wx.OK | wx.ICON_ERROR)
-
-
-def empty_trash(event, service, label_listctrl, message_listctrl, labels):
-    try:
-        trash_label_id = 'TRASH'
-        messages = list_messages(service, trash_label_id)  # Modification ici
-        for message in messages:
-            service.users().messages().delete(userId='me', id=message['id']).execute()
-        wx.MessageBox("Trash emptied successfully.", "Trash Emptied", wx.OK | wx.ICON_INFORMATION)
-        refresh_labels(event, message_listctrl, label_listctrl, service)
-        refresh_message_list(message_listctrl, label_listctrl, service, labels)
-    except HttpError as error:
-        wx.MessageBox(f"An error occurred while emptying the trash: {error}", "Error", wx.OK | wx.ICON_ERROR)
-
-
-def save_draft(event, service, to_text, subject_text, content_text, label_listctrl, message_listctrl, labels):
-    subject = subject_text.GetValue()
-    content = content_text.GetValue()
-
-    try:
-        message = create_message(to_text.GetValue(), subject, content)
-        encoded_message = base64.urlsafe_b64encode(message.as_bytes()).decode()
-        create_draft = {"message": {"raw": encoded_message}}
-        service.users().drafts().create(userId="me", body=create_draft).execute()
-        wx.MessageBox("Draft saved successfully.", "Draft Saved", wx.OK | wx.ICON_INFORMATION)
-
-        # Refresh the labels and messages
-        refresh_labels(event, message_listctrl, label_listctrl, service)
-
-        # Find the index of the "DRAFT" label
-        draft_label_index = next((index for index, (label_name, _, label_id) in enumerate(labels) if label_id == 'DRAFT'), None)
-        if draft_label_index is not None:
-            label_listctrl.Select(draft_label_index)
-            refresh_message_list(message_listctrl, label_listctrl, service, labels)
-
-    except Exception as e:
-        wx.MessageBox(f"An error occurred while saving the draft: {e}", "Error", wx.OK | wx.ICON_ERROR)
-
-
-def new_message(event, service, label_listctrl, message_listctrl, labels):
-    dialog = wx.Dialog(None, title="New Message", size=(800, 600))
-    dialog.Center()
-
-    panel = wx.Panel(dialog)
-
-    to_label = wx.StaticText(panel, label="Recipient:")
-    to_text = wx.TextCtrl(panel, size=(600, -1))
-    subject_label = wx.StaticText(panel, label="Subject:")
-    subject_text = wx.TextCtrl(panel, size=(600, -1))
-    content_label = wx.StaticText(panel, label="Content:")
-    content_text = wx.TextCtrl(panel, style=wx.TE_MULTILINE, size=(500, 400))
-
-    send_button = wx.Button(panel, label="Send Message")
-    save_draft_button = wx.Button(panel, label="Save Draft")
-
-    sizer = wx.FlexGridSizer(cols=2, hgap=5, vgap=5)
-    sizer.Add(to_label, 0, wx.ALIGN_RIGHT | wx.ALIGN_CENTER_VERTICAL)
-    sizer.Add(to_text, 0, wx.EXPAND)
-    sizer.Add(subject_label, 0, wx.ALIGN_RIGHT | wx.ALIGN_CENTER_VERTICAL)
-    sizer.Add(subject_text, 0, wx.EXPAND)
-    sizer.Add(content_label, 0, wx.ALIGN_RIGHT | wx.ALIGN_CENTER_VERTICAL)
-    sizer.Add(content_text, 0, wx.EXPAND)
-    sizer.Add(send_button, 0, wx.ALIGN_RIGHT | wx.ALIGN_CENTER_VERTICAL | wx.TOP, 5)
-    sizer.Add(save_draft_button, 0, wx.ALIGN_RIGHT | wx.ALIGN_CENTER_VERTICAL | wx.TOP, 5)
-
-    panel.SetSizer(sizer)
-    sizer.Fit(panel)
-
-    def on_send(event):
-        to = to_text.GetValue()
-        subject = subject_text.GetValue()
-        content = content_text.GetValue()
-
-        try:
-            message = create_message(to, subject, content)
-            send_message(service, message, label_listctrl, message_listctrl, labels)
-            wx.MessageBox("Message sent successfully.", "Message Sent", wx.OK | wx.ICON_INFORMATION)
-            dialog.Close()
-        except Exception as e:
-            wx.MessageBox(f"An error occurred while sending the message: {e}", "Error", wx.OK | wx.ICON_ERROR)
-
-    def on_save_draft(event):
-        to = to_text.GetValue()
-        subject = subject_text.GetValue()
-        content = content_text.GetValue()
-
-        save_draft(event, service, to, subject_text, content_text, label_listctrl, message_listctrl, labels)
-
-    send_button.Bind(wx.EVT_BUTTON, on_send)
-    save_draft_button.Bind(wx.EVT_BUTTON, lambda event: save_draft(event, service, to_text, subject_text, content_text, label_listctrl, message_listctrl, labels))
-
-    dialog.ShowModal()
-
-
-def create_message(to, subject, content):
-    message = EmailMessage()
-    message.set_content(content)
-    message["To"] = to
-    message["From"] = "your_email@gmail.com"  # Replace with your email address
-    message["Subject"] = subject
-    return message
-
-
-def send_message(service, message, label_listctrl, message_listctrl, labels):
-    encoded_message = base64.urlsafe_b64encode(message.as_bytes()).decode()
-    create_message = {"raw": encoded_message}
-    service.users().messages().send(userId="me", body=create_message).execute()
-    wx.MessageBox("Message sent successfully.", "Message Sent", wx.OK | wx.ICON_INFORMATION)
-
-    # Refresh the labels and messages
-    refresh_labels(None, message_listctrl, label_listctrl, service)
-
-    # Find the index of the "SENT" label
-    sent_label_index = next((index for index, (label_name, _, label_id) in enumerate(labels) if label_id == 'SENT'), None)
-    if sent_label_index is not None:
-        label_listctrl.Select(sent_label_index)
-        refresh_message_list(message_listctrl, label_listctrl, service, labels)
-
-
-def load_icons():
-    icon_ids = {
-        'INBOX': wx.ART_GO_DIR_UP,
-        'SENT': wx.ART_FILE_SAVE,
-        'STARRED': wx.ART_ADD_BOOKMARK,
-        'IMPORTANT': wx.ART_WARNING,
-        'UNREAD': wx.ART_TICK_MARK,
-        'DRAFT': wx.ART_COPY,
-        'TRASH': wx.ART_DELETE,
-        'SPAM': wx.ART_ERROR,
-    }
-
-    icons = {}
-    image_list = wx.ImageList(16, 16)  # Liste des images pour les icônes
-
-    for label, art_id in icon_ids.items():
-        icon = wx.ArtProvider.GetBitmap(art_id, wx.ART_TOOLBAR, (16, 16))
-        icon_id = image_list.Add(icon)
-        icons[label] = icon_id
-
-    return image_list, icons
-
-label_order = {
-    'INBOX': 1,
-    'SENT': 2,
-    'STARRED': 3,
-    'IMPORTANT': 4,
-    'UNREAD': 5,
-    'DRAFT': 6,
-    'TRASH': 7,
-    'SPAM': 8,
-}
-
-
-def display_labels_and_messages(labels, service):
-    global frame
-
-    app = wx.App()
-    frame = wx.Frame(None, title="GmailManager", size=(1200, 800))
-
-    toolbar = frame.CreateToolBar(style=wx.TB_HORIZONTAL | wx.TB_TEXT)
-    toolbar.SetToolBitmapSize(wx.Size(16, 16))
-
-    new_message_icon = wx.ArtProvider.GetBitmap(wx.ART_NEW, wx.ART_TOOLBAR, wx.Size(16, 16))
-    tool_new_message = toolbar.AddTool(wx.ID_ANY, "New Message", new_message_icon)
-    toolbar.Realize()
-
-    refresh_icon = wx.ArtProvider.GetBitmap(wx.ART_REDO, wx.ART_TOOLBAR, wx.Size(16, 16))
-    tool_refresh = toolbar.AddTool(wx.ID_ANY, "Refresh", refresh_icon)
-    frame.Bind(wx.EVT_TOOL, refresh_labels, tool_refresh)
-
-    delete_icon = wx.ArtProvider.GetBitmap(wx.ART_DELETE, wx.ART_TOOLBAR, wx.Size(16, 16))
-    tool_delete = toolbar.AddTool(wx.ID_ANY, "Delete", delete_icon)
-
-    empty_trash_icon = wx.ArtProvider.GetBitmap(wx.ART_DELETE, wx.ART_TOOLBAR, wx.Size(16, 16))
-    tool_empty_trash = toolbar.AddTool(wx.ID_ANY, "Empty Trash", empty_trash_icon)
-    toolbar.Realize()
-
-    quit_icon = wx.ArtProvider.GetBitmap(wx.ART_QUIT, wx.ART_TOOLBAR, wx.Size(16, 16))
-    tool_quit = toolbar.AddTool(wx.ID_ANY, "Quit", quit_icon)
-    toolbar.Realize()
-
-    panel = wx.Panel(frame)
-
-    main_sizer = wx.BoxSizer(wx.HORIZONTAL)
-
-    vertical_splitter = wx.SplitterWindow(panel)
-
-    label_listctrl = wx.ListCtrl(vertical_splitter, style=wx.LC_REPORT | wx.LC_SINGLE_SEL)
-    label_listctrl.InsertColumn(0, 'Labels', width=200)
-
-    image_list, icons = load_icons()
-    label_listctrl.AssignImageList(image_list, wx.IMAGE_LIST_SMALL)
-
-    labels.sort(key=lambda x: label_order.get(x[2], float('inf')))
-
-    for index, (label_name, label_color, label_id) in enumerate(labels):
-        icon_id = icons.get(label_id, -1)
-        label_listctrl.InsertItem(index, label_name, icon_id)
-        if label_color is not None:
-            label_listctrl.SetItemTextColour(index, label_color)
-        label_listctrl.SetItemData(index, index)
-
-    horizontal_splitter = wx.SplitterWindow(vertical_splitter)
-
-    message_listctrl = wx.ListCtrl(horizontal_splitter, style=wx.LC_REPORT | wx.LC_SINGLE_SEL)
-    message_listctrl.InsertColumn(0, 'Messages', width=2540)
-
-    message_content_html = wx.html.HtmlWindow(horizontal_splitter)
-
-    horizontal_splitter.SplitHorizontally(message_listctrl, message_content_html)
-    horizontal_splitter.SetSashGravity(0.5)
-    horizontal_splitter.SetMinimumPaneSize(200)
-
-    vertical_splitter.SplitVertically(label_listctrl, horizontal_splitter)
-    vertical_splitter.SetSashGravity(0.5)
-    vertical_splitter.SetMinimumPaneSize(200)
-
-    main_sizer.Add(vertical_splitter, 1, wx.EXPAND | wx.ALL, 0)
-
-    panel.SetSizer(main_sizer)
-    frame.Show()
-
-    frame.Bind(wx.EVT_TOOL, lambda event: new_message(event, service, label_listctrl, message_listctrl, labels), id=tool_new_message.GetId())
-    frame.Bind(wx.EVT_TOOL, lambda event: refresh_labels(event, message_listctrl, label_listctrl, service), id=tool_refresh.GetId())
-    frame.Bind(wx.EVT_TOOL, lambda event: delete_message(event, message_listctrl, label_listctrl, labels, service, on_label_selected), id=tool_delete.GetId())
-    frame.Bind(wx.EVT_TOOL, lambda event: empty_trash(event, service, label_listctrl, message_listctrl, labels), id=tool_empty_trash.GetId())
-    frame.Bind(wx.EVT_TOOL, close_frame, id=tool_quit.GetId())
-
-    def on_label_selected(event):
-        selected_label_index = label_listctrl.GetFirstSelected()
-        if selected_label_index == wx.NOT_FOUND:
-            return
-        selected_label_name, selected_label_color, selected_label_id = labels[selected_label_index]
-        messages = list_messages(service, selected_label_id)
-        message_listctrl.DeleteAllItems()
-        for index, message in enumerate(messages):
-            subject = get_message_subject(service, message['id'])
-            message_listctrl.InsertItem(index, subject)
-            message_listctrl.SetItemData(index, index)
-        message_listctrl.SetColumnWidth(0, wx.LIST_AUTOSIZE)
-        message_listctrl.SetColumnWidth(0, max(message_listctrl.GetColumnWidth(0), 200))
-
-    logging.basicConfig(level=logging.DEBUG)
-
-    def on_message_selected(event):
-        try:
-            selected_message_index = message_listctrl.GetFirstSelected()
-            if selected_message_index == wx.NOT_FOUND:
-                return
-
-            selected_label_index = label_listctrl.GetFirstSelected()
-            selected_label_name, selected_label_color, selected_label_id = labels[selected_label_index]
-            messages = list_messages(service, selected_label_id)
-            selected_message = messages[selected_message_index]
-
-            message = service.users().messages().get(userId='me', id=selected_message['id'], format="full").execute()
-            print(json.dumps(service.users().messages().get(userId='me', id=selected_message['id'], format="full").execute(), indent=2))
-            payload = message.get('payload', {})
-            parts = payload.get('parts', [])
-
-            def extract_data(items):
-                result = ""
-                for item in items:
-                    if 'body' in item and item['body']:
-                        if 'data' in item['body']:
-                            data = item['body']['data']
-                            result += decode_base64(data).decode("utf-8")
-                        elif 'attachmentId' in item['body']:
-                            attachment_id = item['body']['attachmentId']
-                            attachment = service.users().messages().attachments().get(userId='me', messageId=msg_id, id=attachment_id).execute()
-                            data = attachment['data']
-                            result += decode_base64(data).decode("utf-8")
-                    elif 'parts' in item and item['parts']:
-                        if 'mimeType' in item and item["mimeType"] == "multipart/alternative":
-                            result += extract_data(item['parts'])
-                        elif 'mimeType' in item and item["mimeType"] == "multipart/mixed":
-                            for sub_item in item['parts']:
-                                if 'mimeType' in sub_item and sub_item['mimeType'] != "multipart/*":
-                                    result += extract_data([sub_item])
-                                else:
-                                    result += extract_data(sub_item['parts'])
-                        else:
-                            result += extract_data(item['parts'])
-                return result
-
-            def find_matching_part(parts, mime_type, max_depth, current_depth=0):
-                matching_part = None
-
-                for part in parts:
-                    if 'mimeType' in part and part['mimeType'] == mime_type:
-                        return part
-
-                    if 'parts' in part and current_depth < max_depth:
-                        matched_part = find_matching_part(part['parts'], mime_type, max_depth, current_depth=current_depth+1)
-                        if matched_part:
-                            matching_part = matched_part
-
-                return matching_part
-
-            def extract_html(parts, max_depth=3):
-                matching_part = find_matching_part(parts, 'text/html', max_depth)
-                if not matching_part:
-                    return ""
-
-                if 'body' in matching_part and matching_part['body']:
-                    if 'data' in matching_part['body']:
-                        data = matching_part['body']['data']
-                        html_data = base64.urlsafe_b64decode(data).decode('utf-8')
-                        return html_data
-
-                return ""
-
-            def decode_base64(data):
-                missing_padding = 4 - len(data) % 4
-                if missing_padding:
-                    data += '=' * missing_padding
-                return base64.urlsafe_b64decode(data)
-
-            if 'text/html' in [part.get('mimeType') for part in parts]:
-                content = extract_html([payload])
+    def __init__(self, service):
+        super().__init__()
+        self.service = service
+        self.check_frequency = 180000  # Initialize the default check frequency
+        self.timer_active = True
+        self.initUI()
+        self.check_for_unread_messages()  # Start automatically checking for new messages
+
+    def initUI(self):
+        self.setWindowTitle('Gmail Manager')
+        self.setGeometry(100, 100, 1200, 800)
+
+        toolbar = self.addToolBar('Toolbar')
+        new_message_action = QtWidgets.QAction('New Message', self)
+        toolbar.addAction(new_message_action)
+        new_message_action.triggered.connect(self.new_message)
+
+        refresh_action = QtWidgets.QAction('Refresh', self)
+        toolbar.addAction(refresh_action)
+        refresh_action.triggered.connect(self.refresh_labels)
+
+        delete_action = QtWidgets.QAction('Delete', self)
+        toolbar.addAction(delete_action)
+        delete_action.triggered.connect(self.delete_message)
+
+        mark_as_read_action = QtWidgets.QAction('Mark as Read', self)
+        toolbar.addAction(mark_as_read_action)
+        mark_as_read_action.triggered.connect(self.mark_message_as_read_from_button)
+
+        mark_as_not_read_action = QtWidgets.QAction('Mark as Not Read', self)
+        toolbar.addAction(mark_as_not_read_action)
+        mark_as_not_read_action.triggered.connect(self.mark_message_as_not_read_from_button)
+
+        empty_trash_action = QtWidgets.QAction('Empty Trash', self)
+        toolbar.addAction(empty_trash_action)
+        empty_trash_action.triggered.connect(self.empty_trash)
+
+        quit_action = QtWidgets.QAction('Quit', self)
+        toolbar.addAction(quit_action)
+        quit_action.triggered.connect(self.close)
+
+        # Create an icon to indicate UNREAD messages
+        self.unread_message_icon = QtGui.QIcon("icons/unread_message_notif.png")
+        # Create the action to indicate UNREAD messages in the toolbar
+        self.unread_message_action = QtWidgets.QAction(self.unread_message_icon, "(No UNREAD messages)", self)
+        toolbar.addAction(self.unread_message_action)
+
+        central_widget = QtWidgets.QWidget()
+        self.setCentralWidget(central_widget)
+
+        self.label_list = QtWidgets.QListWidget()
+        self.message_list = QtWidgets.QListWidget()
+        self.message_content = QtWidgets.QTextEdit()
+        self.message_content.setReadOnly(True)
+
+        self.label_list.itemSelectionChanged.connect(self.on_label_selected)
+        self.message_list.itemSelectionChanged.connect(self.on_message_selected)
+
+        self.label_list.itemSelectionChanged.connect(self.on_label_selected)
+        self.message_list.itemSelectionChanged.connect(self.on_message_selected)
+
+        # self.message_list.model().rowsInserted.connect(self.adjust_splitter)
+        # self.message_list.model().rowsRemoved.connect(self.adjust_splitter)
+
+        splitter1 = QtWidgets.QSplitter(QtCore.Qt.Horizontal)
+        self.splitter2 = QtWidgets.QSplitter(QtCore.Qt.Vertical)
+
+        splitter1.addWidget(self.label_list)
+        splitter1.addWidget(self.splitter2)
+
+        self.splitter2.addWidget(self.message_list)
+        self.splitter2.addWidget(self.message_content)
+
+        layout = QtWidgets.QVBoxLayout(central_widget)
+        layout.addWidget(splitter1)
+
+        self.splitter1 = splitter1  # Store a reference to splitter1
+        self.splitter2 = self.splitter2  # Store a reference to splitter2
+
+        # Set the stretch factors for splitter2
+        self.splitter2.setStretchFactor(0, 1)  # The message_list gets one share
+        self.splitter2.setStretchFactor(1, 3)  # The message_content gets three shares
+
+        self.refresh_labels()
+
+        # Default to selecting the label "INBOX" on widget startup
+        inbox_item = self.find_label_item(r'^INBOX\b.*')
+        if inbox_item:
+            inbox_index = self.label_list.indexFromItem(inbox_item).row()
+            self.label_list.setCurrentRow(inbox_index)
+
+        # Ajoutez le menu déroulant dans la barre de menus pour sélectionner la fréquence de vérification
+        menubar = self.menuBar()
+        self.frequency_menu = menubar.addMenu('Set Check Frequency')
+
+        # Add the dropdown menu to the menu bar to select the check frequency
+        self.one_minute_action = QtWidgets.QAction('1 minute', self)
+        self.two_minutes_action = QtWidgets.QAction('2 minutes', self)
+        self.three_minutes_action = QtWidgets.QAction('3 minutes', self)
+        self.custom_interval_action = QtWidgets.QAction('Custom interval', self)
+        self.disable_timer_action = QtWidgets.QAction('Disable timer', self)
+
+        self.frequency_menu.addAction(self.one_minute_action)
+        self.frequency_menu.addAction(self.two_minutes_action)
+        self.frequency_menu.addAction(self.three_minutes_action)
+        self.frequency_menu.addAction(self.custom_interval_action)
+        self.frequency_menu.addAction(self.disable_timer_action)
+
+        self.one_minute_action.triggered.connect(lambda: self.set_check_frequency(60000))
+        self.two_minutes_action.triggered.connect(lambda: self.set_check_frequency(120000))
+        self.three_minutes_action.triggered.connect(lambda: self.set_check_frequency(180000))
+        self.custom_interval_action.triggered.connect(self.set_custom_interval)
+        self.disable_timer_action.triggered.connect(self.disable_timer)
+
+        # Set initial checkmark for the default frequency
+        self.update_frequency_menu()
+
+    # def adjust_splitter(self):
+    #     # Adjust the size of splitter2 based on the content of message_list
+    #     size_hint = self.message_list.sizeHintForRow(0) * self.message_list.count() + 2 * self.message_list.frameWidth()
+    #     margin = 20  # Additional margin
+    #     self.message_list.setMaximumHeight(size_hint + margin)
+    #     self.splitter2.setSizes([size_hint + margin, self.splitter2.size().height() - (size_hint + margin)])
+
+    @staticmethod
+    def get_label_id_by_name(service, label_name):
+        labels = service.users().labels().list(userId='me').execute()
+        for label in labels['labels']:
+            if label['name'] == label_name:
+                return label['id']
+        return None
+
+    def update_frequency_menu(self):
+        self.one_minute_action.setCheckable(True)
+        self.two_minutes_action.setCheckable(True)
+        self.three_minutes_action.setCheckable(True)
+        self.custom_interval_action.setCheckable(True)
+        self.disable_timer_action.setCheckable(True)
+
+        if self.timer_active:
+            self.one_minute_action.setChecked(self.check_frequency == 60000)
+            self.two_minutes_action.setChecked(self.check_frequency == 120000)
+            self.three_minutes_action.setChecked(self.check_frequency == 180000)
+            if self.check_frequency not in [60000, 120000, 180000]:
+                self.custom_interval_action.setChecked(True)
+                self.custom_interval_action.setText(f'Custom interval ({self.check_frequency // 60000} minutes)')
             else:
-                content = extract_data([payload])
+                self.custom_interval_action.setChecked(False)
+                self.custom_interval_action.setText('Custom interval')
+            self.disable_timer_action.setChecked(False)
+        else:
+            self.one_minute_action.setChecked(False)
+            self.two_minutes_action.setChecked(False)
+            self.three_minutes_action.setChecked(False)
+            self.custom_interval_action.setChecked(False)
+            self.disable_timer_action.setChecked(True)
 
-            headers = {header['name']: header['value'] for header in payload.get('headers', [])}
-            subject = headers.get('Subject', 'No Subject')
-            date_str = headers.get('Date', 'No Date')
-            from_email = headers.get('From', 'No Sender')
-            to_emails = headers.get('To', 'No Recipient')
+    def set_check_frequency(self, frequency):
+        self.check_frequency = frequency
+        self.timer_active = True
+        self.update_frequency_menu()
+        print(f"Check frequency set to {frequency} milliseconds")
 
-            # Display raw date string
-            formatted_date = date_str
+    def set_custom_interval(self):
+        interval, ok = QtWidgets.QInputDialog.getInt(self, 'Custom Interval', 'Enter interval in minutes:', 1, 1, 1440)
+        if ok:
+            self.custom_interval = interval
+            self.set_check_frequency(interval * 60000)
 
-            formatted_from = f"From: {from_email}"
-            formatted_to = f"To: {to_emails}"
+    def disable_timer(self):
+        self.timer_active = False
+        self.update_frequency_menu()
+        print("Timer disabled")
 
-            combined_html = f"""\
-            <html>\
-            <head>\
-                <meta charset="UTF-8">\
-            </head>\
-            <body>\
-                <h1>{subject}</h1>\
-                <hr />\
-                <h3>{formatted_date}</h3>\
-                <h3>{formatted_from}</h3>\
-                <h3>{formatted_to}</h3>\
-                <hr />\
-                {content}\
-            </body>\
-            </html>
-            """
+    def check_for_unread_messages(self):
+        # Logic to check UNREAD messages
+        # Use QTimer to schedule periodic checks
 
-            message_content_html.SetPage(combined_html)
+        self.refresh_labels()
 
-        except Error as error:
-            wx.MessageBox(f"An unexpected error occurred: {error}", "Error", wx.OK | wx.ICON_ERROR)
+        # Check UNREAD messages in the UNREAD label
+        label_name = 'UNREAD'
+        label_id = self.get_label_id_by_name(self.service, label_name)
 
-    label_listctrl.Bind(wx.EVT_LIST_ITEM_SELECTED, on_label_selected)
-    message_listctrl.Bind(wx.EVT_LIST_ITEM_SELECTED, on_message_selected)
-    app.MainLoop()
+        if label_id:
+            unread_messages = list_messages(self.service, label_id)
+            if unread_messages:
+                # If UNREAD messages are found in the UNREAD label, update the notification icon
+                self.unread_message_action.setEnabled(True)
+                self.unread_message_action.setText(f"UNREAD Messages Received")
+            else:
+                # Disable the action if no UNREAD messages are detected
+                self.unread_message_action.setEnabled(False)
+        else:
+            print("Label '{}' not found.".format(label_name))
+
+        # Schedule the next periodic check in 30 seconds
+        #QTimer.singleShot(30000, self.check_for_unread_messages)
+        # Schedule the next periodic check using the selected frequency
+        if self.timer_active:
+            QTimer.singleShot(self.check_frequency, self.check_for_unread_messages)
+
+    def refresh_labels(self, select_label=None):
+        # Save the index of the previously selected row and the label name
+        previous_index = self.label_list.currentRow()
+        previous_label_name = None
+        selected_items = self.label_list.selectedItems()
+        if selected_items:
+            previous_label_name = selected_items[0].text()  # Save the name of the previous label
+            #print("Label avant :", previous_label_name)
+        #else:
+            #print("Aucun label sélectionné avant le rafraîchissement")
+
+        #print("Index de la ligne précédemment sélectionnée avant le rafraîchissement :", previous_index)
+
+        self.label_list.clear()
+        self.labels = list_labels(self.service)
+
+        # Charger les icônes
+        icons = load_icons()
+
+        for label_name, label_color, label_id, font in self.labels:
+            item = QtWidgets.QListWidgetItem()
+            item.setData(QtCore.Qt.UserRole, label_id)
+            base_label_name = label_name.split()[0]
+            if base_label_name in icons:
+                icon = icons[base_label_name]
+                item.setIcon(icon)
+            item.setText(label_name)
+            if label_color:
+                item.setForeground(label_color)
+            if font:
+                item.setFont(font)
+            self.label_list.addItem(item)
+
+        # Adjust the size of splitter1 based on the maximum length of the labels
+        max_label_length = max([self.label_list.fontMetrics().boundingRect(label[0]).width() for label in self.labels])
+        self.label_list.setFixedWidth(max_label_length + 40)  # Ajouter une marge pour un peu d'espace supplémentaire
+        self.splitter1.setSizes([max_label_length + 20, self.width() - max_label_length - 20])
+
+        # Try to retrieve the label by its name
+        if previous_label_name:
+            #print("Nom du label précédemment actif:", previous_label_name)
+            escaped_previous_label_name = re.escape(previous_label_name)
+            escaped_previous_label_name = escaped_previous_label_name.replace('\\(', '\\(').replace('\\)', '\\)')
+            previous_item = self.find_label_item(escaped_previous_label_name)
+            if previous_item:
+                previous_index = self.label_list.indexFromItem(previous_item).row()
+
+        # Restore the selection of the previously active label by index
+        #print("Index de la ligne rétablie après le rafraîchissement :", previous_index)
+        self.label_list.setCurrentRow(previous_index)
+
+        # Search for and select the specified label
+        if select_label:
+            label_item = self.find_label_item(select_label)
+            if not label_item:
+                # If the specified label is not found, try to find a matching label
+                # with a regular pattern (e.g., "SENT (number)")
+                pattern = re.compile(rf"{re.escape(select_label)}(?:\s*\(\d+\))?$")
+                for item in self.label_list.findItems(pattern.pattern, QtCore.Qt.MatchRegExp):
+                    label_item = item
+                    break
+            if label_item:
+                label_index = self.label_list.indexFromItem(label_item).row()
+                self.label_list.setCurrentRow(label_index)
+            else:
+                print(f"Le libellé '{select_label}' n'a pas été trouvé.")
+
+        # Get the name of the selected label after refreshing
+        selected_items = self.label_list.selectedItems()
+        if selected_items:
+            current_label_name = selected_items[0].text()
+            #print("Label après :", current_label_name)
+        #else:
+            #print("Aucun label sélectionné après le rafraîchissement")
+
+    def find_label_item(self, label_name):
+        for item in self.label_list.findItems(label_name, QtCore.Qt.MatchRegExp):
+            return item
+        return None
+
+    def on_label_selected(self):
+        self.message_list.clear()
+        selected_items = self.label_list.selectedItems()
+        if not selected_items:
+            return
+        label_id = selected_items[0].data(QtCore.Qt.UserRole)
+        messages = list_messages(self.service, label_id)
+
+        # Search for the first label starting with "UNREAD" in the list of labels in the user interface
+        unread_label_id = None
+        for index in range(self.label_list.count()):
+            label_item = self.label_list.item(index)
+            label_name = label_item.text()
+            if re.match(r'^UNREAD', label_name, re.IGNORECASE):
+                unread_label_id = label_item.data(QtCore.Qt.UserRole)
+                break
+
+        if unread_label_id:
+            unread_messages = list_messages(self.service, unread_label_id)
+            unread_message_subjects = [get_message_subject(self.service, message['id']) for message in unread_messages]
+        else:
+            unread_message_subjects = []
+
+        for message in messages:
+            subject = get_message_subject(self.service, message['id'])
+            item = QtWidgets.QListWidgetItem(subject)
+            item.setData(QtCore.Qt.UserRole, message['id'])
+
+            # Check if the subject of the message is in the list of subjects of unread messages
+            if subject in unread_message_subjects:
+                item.setForeground(QtGui.QColor(0, 0, 139))  # Bleu foncé pour les messages non lus
+                font = item.font()  # Obtenir la police actuelle de l'élément
+                font.setBold(True)  # Mettre en gras la police
+                item.setFont(font)  # Appliquer la police modifiée à l'élément
+
+            self.message_list.addItem(item)
+
+        # Clear the message content if there are no messages for the selected label
+        if not messages:
+            self.message_content.clear()
+
+        # Select the first item in the list of messages
+        if self.message_list.count() > 0:
+            self.message_list.setCurrentRow(0)
+
+    def on_message_selected(self):
+        selected_items = self.message_list.selectedItems()
+        if not selected_items:
+            return
+        message_id = selected_items[0].data(QtCore.Qt.UserRole)
+        message = self.service.users().messages().get(userId='me', id=message_id, format="full").execute()
+        #print(json.dumps(self.service.users().messages().get(userId='me', id=message_id, format="full").execute(), indent=2))
+        payload = message.get('payload', {})
+        parts = payload.get('parts', [])
+
+        headers = {header['name']: header['value'] for header in payload.get('headers', [])}
+        subject = headers.get('Subject', 'No Subject')
+        date_str = headers.get('Date', 'No Date')
+        from_email = headers.get('From', 'No Sender')
+        to_emails = headers.get('To', 'No Recipient')
+
+        content = ""
+        if 'text/html' in [part.get('mimeType') for part in parts]:
+            content = self.extract_html([payload])
+        else:
+            content = self.extract_data([payload])
+
+        self.message_content.setHtml(f"<h1>{subject}</h1><p>{date_str}</p><p>From: {from_email}</p><p>To: {to_emails}</p><hr>{content}")
+
+    def mark_message_as_read_from_button(self):
+        # Retrieve the ID of the selected message in the list of messages
+        selected_items = self.message_list.selectedItems()
+        if not selected_items:
+            return
+        message_id = selected_items[0].data(QtCore.Qt.UserRole)
+        # Call the method to mark the message as read
+        self.mark_message_as_read(message_id)
+
+    def mark_message_as_read(self, message_id):
+        try:
+            modify_request = {'removeLabelIds': ['UNREAD']}
+            self.service.users().messages().modify(userId='me', id=message_id, body=modify_request).execute()
+            print("Message marked as read successfully.")
+            # Refresh the labels to update the list of unread messages
+            self.refresh_labels()
+            # Check if there are any messages left in the list
+            if self.message_list.count() == 0:
+                # Disable the action if no UNREAD messages are detected
+                self.unread_message_action.setEnabled(False)
+        except HttpError as error:
+            QtWidgets.QMessageBox.critical(None, "Error", f"An error occurred while marking the message as read: {error}")
+
+    def mark_message_as_not_read_from_button(self):
+        # Get the ID of the selected message in the list of messages
+        selected_items = self.message_list.selectedItems()
+        if not selected_items:
+            return
+        message_id = selected_items[0].data(QtCore.Qt.UserRole)
+        # Call the method to mark the message as unread
+        self.mark_message_as_not_read(message_id)
+
+    def mark_message_as_not_read(self, message_id):
+        try:
+            modify_request = {'addLabelIds': ['UNREAD']}
+            self.service.users().messages().modify(userId='me', id=message_id, body=modify_request).execute()
+            print("Message marked as not read successfully.")
+            # Refresh the labels to update the list of unread messages
+            self.refresh_labels()
+        except HttpError as error:
+            QtWidgets.QMessageBox.critical(None, "Error", f"An error occurred while marking the message as not read: {error}")
+
+    def extract_data(self, parts):
+        result = ""
+        for part in parts:
+            if 'body' in part and part['body']:
+                if 'data' in part['body']:
+                    data = part['body']['data']
+                    result += self.decode_base64(data).decode("utf-8")
+                elif 'attachmentId' in part['body']:
+                    attachment_id = part['body']['attachmentId']
+                    attachment = self.service.users().messages().attachments().get(userId='me', messageId=message_id, id=attachment_id).execute()
+                    data = attachment['data']
+                    result += self.decode_base64(data).decode("utf-8")
+            elif 'parts' in part and part['parts']:
+                if 'mimeType' in part and part["mimeType"] == "multipart/alternative":
+                    result += self.extract_data(part['parts'])
+                elif 'mimeType' in part and part["mimeType"] == "multipart/mixed":
+                    for sub_part in part['parts']:
+                        if 'mimeType' in sub_part and sub_part['mimeType'] != "multipart/*":
+                            result += self.extract_data([sub_part])
+                        else:
+                            result += self.extract_data(sub_part['parts'])
+                else:
+                    return self.extract_data(part['parts'])
+        return result
+
+    def find_matching_part(self, parts, mime_type, max_depth, current_depth=0):
+        matching_part = None
+
+        for part in parts:
+            if 'mimeType' in part and part['mimeType'] == mime_type:
+                return part
+
+            if 'parts' in part and current_depth < max_depth:
+                matched_part = self.find_matching_part(part['parts'], mime_type, max_depth, current_depth=current_depth+1)
+                if matched_part:
+                    matching_part = matched_part
+
+        return matching_part
+
+    def extract_html(self, parts, max_depth=3):
+        matching_part = self.find_matching_part(parts, 'text/html', max_depth)
+        if not matching_part:
+            return ""
+
+        if 'body' in matching_part and matching_part['body']:
+            if 'data' in matching_part['body']:
+                data = matching_part['body']['data']
+                html_data = self.decode_base64(data).decode('utf-8')
+                return html_data
+        return ""
+
+    def decode_base64(self, data):
+        missing_padding = 4 - len(data) % 4
+        if missing_padding:
+            data += '=' * missing_padding
+        return base64.urlsafe_b64decode(data)
+
+    def new_message(self):
+        compose_dialog = ComposeDialog(self.service, self)
+        compose_dialog.exec_()
+
+    def delete_message(self):
+        selected_items = self.message_list.selectedItems()
+        if not selected_items:
+            return
+        message_id = selected_items[0].data(QtCore.Qt.UserRole)
+        reply = QtWidgets.QMessageBox.question(self, 'Delete Message', 'Are you sure you want to delete this message?', QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No, QtWidgets.QMessageBox.No)
+
+        if reply == QtWidgets.QMessageBox.Yes:
+            try:
+                self.service.users().messages().delete(userId='me', id=message_id).execute()
+                QtWidgets.QMessageBox.information(self, 'Message Deleted', 'The message has been deleted.')
+
+                # Clear the list of messages and reset the message content
+                self.message_list.clear()
+                self.message_content.clear()
+
+                self.refresh_labels()
+
+                # Select the first item in the list of messages
+                if self.message_list.count() > 0:
+                    self.message_list.setCurrentRow(0)
+
+            except HttpError as error:
+                QtWidgets.QMessageBox.critical(None, "Error", f"An error occurred: {error}")
+
+    def empty_trash(self):
+        reply = QtWidgets.QMessageBox.question(self, 'Empty Trash', 'Are you sure you want to empty the trash?', QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No, QtWidgets.QMessageBox.No)
+
+        if reply == QtWidgets.QMessageBox.Yes:
+            try:
+                creds = authenticate()
+                service = build('gmail', 'v1', credentials=creds)
+                trash_label_id = 'TRASH'
+                messages = list_messages(service, trash_label_id)
+                for message in messages:
+                    self.service.users().messages().delete(userId='me', id=message['id']).execute()
+                QtWidgets.QMessageBox.information(self, 'Trash Emptied', 'The trash has been emptied.')
+                self.refresh_labels()
+            except HttpError as error:
+                QtWidgets.QMessageBox.critical(None, "Error", f"An error occurred: {error}")
+
+
+class ComposeDialog(QtWidgets.QDialog):
+    def __init__(self, service, parent=None):
+        super().__init__(parent)
+        self.service = service
+        self.attachments = []
+        self.initUI()
+
+    def initUI(self):
+        self.setWindowTitle('Compose New Message')
+        self.setGeometry(300, 300, 600, 400)
+
+        layout = QtWidgets.QVBoxLayout()
+
+        self.to_field = QtWidgets.QLineEdit()
+        self.to_field.setPlaceholderText('To')
+        layout.addWidget(self.to_field)
+
+        self.subject_field = QtWidgets.QLineEdit()
+        self.subject_field.setPlaceholderText('Subject')
+        layout.addWidget(self.subject_field)
+
+        self.body_field = QtWidgets.QTextEdit()
+        layout.addWidget(self.body_field)
+
+        attach_button = QtWidgets.QPushButton('Attach File')
+        attach_button.clicked.connect(self.attach_file)
+        layout.addWidget(attach_button)
+
+        button_layout = QtWidgets.QHBoxLayout()
+        send_button = QtWidgets.QPushButton('Send')
+        send_button.clicked.connect(self.send_message)
+        button_layout.addWidget(send_button)
+
+        save_draft_button = QtWidgets.QPushButton('Save Draft')
+        save_draft_button.clicked.connect(self.save_draft)
+        button_layout.addWidget(save_draft_button)
+
+        cancel_button = QtWidgets.QPushButton('Cancel')
+        cancel_button.clicked.connect(self.reject)
+        button_layout.addWidget(cancel_button)
+
+        layout.addLayout(button_layout)
+        self.setLayout(layout)
+
+    def attach_file(self):
+        options = QtWidgets.QFileDialog.Options()
+        file_name, _ = QtWidgets.QFileDialog.getOpenFileName(self, "Attach File", "", "All Files (*);;Text Files (*.txt);;Images (*.png *.jpg);;PDF Files (*.pdf)", options=options)
+        if file_name:
+            self.attachments.append(file_name)
+            QtWidgets.QMessageBox.information(self, 'Success', f'File {file_name} attached successfully.')
+
+    def send_message(self):
+        to = self.to_field.text()
+        subject = self.subject_field.text()
+        body = self.body_field.toPlainText()
+
+        if not to or not subject or not body:
+            QtWidgets.QMessageBox.warning(self, 'Warning', 'All fields are required.')
+            return
+
+        try:
+            message = EmailMessage()
+            message.set_content(body)
+            message['To'] = to
+            message['Subject'] = subject
+
+            for file_path in self.attachments:
+                file_name = os.path.basename(file_path)
+                with open(file_path, 'rb') as file:
+                    file_data = file.read()
+                    maintype, subtype = mimetypes.guess_type(file_path)[0].split('/')
+                    message.add_attachment(file_data, maintype=maintype, subtype=subtype, filename=file_name)
+
+            raw_message = base64.urlsafe_b64encode(message.as_bytes()).decode()
+            create_message = {
+                'raw': raw_message
+            }
+
+            self.service.users().messages().send(userId='me', body=create_message).execute()
+            QtWidgets.QMessageBox.information(self, 'Success', 'Message sent successfully.')
+            # Refresh the labels in the parent window and select the "SENT" label
+            self.parent().refresh_labels(select_label="SENT")
+            self.accept()
+
+        except HttpError as error:
+            QtWidgets.QMessageBox.critical(self, 'Error', f'An error occurred: {error}')
+
+    def save_draft(self):
+        to = self.to_field.text()
+        subject = self.subject_field.text()
+        body = self.body_field.toPlainText()
+
+        if not to or not subject or not body:
+            QtWidgets.QMessageBox.warning(self, 'Warning', 'All fields are required to save a draft.')
+            return
+
+        try:
+            message = EmailMessage()
+            message.set_content(body)
+            message['To'] = to
+            message['Subject'] = subject
+
+            for file_path in self.attachments:
+                file_name = os.path.basename(file_path)
+                with open(file_path, 'rb') as file:
+                    file_data = file.read()
+                    maintype, subtype = mimetypes.guess_type(file_path)[0].split('/')
+                    message.add_attachment(file_data, maintype=maintype, subtype=subtype, filename=file_name)
+
+            raw_message = base64.urlsafe_b64encode(message.as_bytes()).decode()
+            create_draft = {
+                'message': {
+                    'raw': raw_message
+                }
+            }
+
+            self.service.users().drafts().create(userId='me', body=create_draft).execute()
+            QtWidgets.QMessageBox.information(self, 'Success', 'Draft saved successfully.')
+            # Refresh the labels in the parent window and select the "DRAFT" label
+            self.parent().refresh_labels(select_label="DRAFT")
+            self.accept()
+
+        except HttpError as error:
+            QtWidgets.QMessageBox.critical(self, 'Error', f'An error occurred: {error}')
 
 
 def main():
     creds = authenticate()
-    service = build('gmail', 'v1', credentials=creds)
-    labels = list_labels(service)
 
-    if labels:
-        display_labels_and_messages(labels, service)
-    else:
-        print("No labels found.")
+    try:
+        service = build('gmail', 'v1', credentials=creds)
+
+        app = QtWidgets.QApplication(sys.argv)
+        window = GmailManager(service)
+        window.show()
+        sys.exit(app.exec_())
+
+    except HttpError as error:
+        QtWidgets.QMessageBox.critical(None, "Error", f"An error occurred: {error}")
 
 
 if __name__ == '__main__':
