@@ -23,6 +23,7 @@ from PyQt5.QtCore import QTimer
 SCOPES = ["https://mail.google.com/"]
 # SCOPES = ["https://www.googleapis.com/auth/gmail.readonly", "https://www.googleapis.com/auth/gmail.modify"]
 
+
 def convert_expiry_to_paris_time(expiry_utc):
     utc_timezone = pytz.utc
     paris_timezone = pytz.timezone('Europe/Paris')
@@ -122,9 +123,9 @@ def list_labels(service):
                 # Use an iterative loop to get the depth of the sub-label
                 depth = len(parts)
                 # Create a sorting key combining name and depth
-                return (type_order, parts[0], depth, label['name'])
+                return type_order, parts[0], depth, label['name']
 
-            return (type_order, order)
+            return type_order, order
 
         sorted_labels = sorted(labels, key=sort_key)
 
@@ -252,8 +253,8 @@ class GmailManager(QtWidgets.QMainWindow):
         self.label_list.itemSelectionChanged.connect(self.on_label_selected)
         self.message_list.itemSelectionChanged.connect(self.on_message_selected)
 
-        self.splitter1 = QtWidgets.QSplitter(QtCore.Qt.Horizontal)
-        self.splitter2 = QtWidgets.QSplitter(QtCore.Qt.Vertical)
+        self.splitter1 = QtWidgets.QSplitter(Qt.Horizontal)
+        self.splitter2 = QtWidgets.QSplitter(Qt.Vertical)
 
         self.splitter1.addWidget(self.label_list)
         self.splitter1.addWidget(self.splitter2)
