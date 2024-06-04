@@ -111,15 +111,18 @@ def list_labels(service):
         }
 
         def sort_key(label):
-            # Sort priority by specific order then by type
+            # Get the sorting order by name and by type
             order = label_order.get(label['name'].upper(), float('inf'))
             type_order = label_order.get(label['type'], float('inf'))
 
-            # If the type is 'user', sort by name and subname depth
+            # If the type is 'user', sort by name and sub-label depth
             if label['type'] == 'user':
                 parts = label['name'].split('/')
-                # Use tuples to sort by multiple levels
-                return (type_order, parts[0], parts[1] if len(parts) > 1 else '')
+                # Use an iterative loop to get the depth of the sub-label
+                depth = len(parts)
+                # Create a sorting key combining name and depth
+                return (type_order, parts[0], depth, label['name'])
+
             return (type_order, order)
 
         sorted_labels = sorted(labels, key=sort_key)
