@@ -58,6 +58,9 @@ Before using GmailManager, ensure you have the following:
 
 3. Once authenticated, the application will display your Gmail labels and messages.
 
+## Screenshot
+![GmailManager Screenshot](screenshot.png)
+
 ## Contributing
 This project is currently a work-in-progress (WIP). Contributions are welcome! Please fork the repository and submit a pull request with your changes.
 
