@@ -14,6 +14,7 @@ from googleapiclient.errors import HttpError
 from email.message import EmailMessage
 from PyQt5.QtWebEngineWidgets import QWebEngineView
 from PyQt5 import QtWidgets, QtGui, QtCore
+from PyQt5.QtCore import Qt
 from PyQt5.QtCore import QTimer
 
 #logging.basicConfig(level=logging.DEBUG)
@@ -393,7 +394,7 @@ class GmailManager(QtWidgets.QMainWindow):
 
         for label_name, label_color, label_id, font in self.labels:
             item = QtWidgets.QListWidgetItem()
-            item.setData(QtCore.Qt.UserRole, label_id)
+            item.setData(Qt.UserRole, label_id)
             base_label_name = label_name.split()[0]
             if base_label_name in icons:
                 icon = icons[base_label_name]
@@ -430,7 +431,7 @@ class GmailManager(QtWidgets.QMainWindow):
                 # If the specified label is not found, try to find a matching label
                 # with a regular pattern (e.g., "SENT (number)")
                 pattern = re.compile(rf"{re.escape(select_label)}(?:\s*\(\d+\))?$")
-                for item in self.label_list.findItems(pattern.pattern, QtCore.Qt.MatchRegExp):
+                for item in self.label_list.findItems(pattern.pattern, Qt.MatchRegExp):
                     label_item = item
                     break
             if label_item:
@@ -455,7 +456,7 @@ class GmailManager(QtWidgets.QMainWindow):
             label_item = self.label_list.item(index)
             label_name = label_item.text()
             if re.match(r'^UNREAD', label_name, re.IGNORECASE):
-                unread_label_id = label_item.data(QtCore.Qt.UserRole)
+                unread_label_id = label_item.data(Qt.UserRole)
                 break
         if unread_label_id:
             unread_messages = list_messages(self.service, unread_label_id)
@@ -465,7 +466,7 @@ class GmailManager(QtWidgets.QMainWindow):
                 self.unread_message_action.setText(f"UNREAD Messages Received")
 
     def find_label_item(self, label_name):
-        for item in self.label_list.findItems(label_name, QtCore.Qt.MatchRegExp):
+        for item in self.label_list.findItems(label_name, Qt.MatchRegExp):
             return item
         return None
 
@@ -477,7 +478,7 @@ class GmailManager(QtWidgets.QMainWindow):
         selected_items = self.label_list.selectedItems()
         if not selected_items:
             return
-        label_id = selected_items[0].data(QtCore.Qt.UserRole)
+        label_id = selected_items[0].data(Qt.UserRole)
         messages = list_messages(self.service, label_id)
 
         # Search for the first label starting with "UNREAD" in the list of labels in the user interface
@@ -486,7 +487,7 @@ class GmailManager(QtWidgets.QMainWindow):
             label_item = self.label_list.item(index)
             label_name = label_item.text()
             if re.match(r'^UNREAD', label_name, re.IGNORECASE):
-                unread_label_id = label_item.data(QtCore.Qt.UserRole)
+                unread_label_id = label_item.data(Qt.UserRole)
                 break
 
         if unread_label_id:
@@ -498,7 +499,7 @@ class GmailManager(QtWidgets.QMainWindow):
         for message in messages:
             subject = get_message_subject(self.service, message['id'])
             item = QtWidgets.QListWidgetItem(subject)
-            item.setData(QtCore.Qt.UserRole, message['id'])
+            item.setData(Qt.UserRole, message['id'])
 
             # Check if the subject of the message is in the list of subjects of unread messages
             if subject in unread_message_subjects:
@@ -521,7 +522,7 @@ class GmailManager(QtWidgets.QMainWindow):
         selected_items = self.message_list.selectedItems()
         if not selected_items:
             return
-        message_id = selected_items[0].data(QtCore.Qt.UserRole)
+        message_id = selected_items[0].data(Qt.UserRole)
         message = self.service.users().messages().get(userId='me', id=message_id, format="full").execute()
         #print(json.dumps(self.service.users().messages().get(userId='me', id=message_id, format="full").execute(), indent=2))
         payload = message.get('payload', {})
@@ -559,7 +560,7 @@ class GmailManager(QtWidgets.QMainWindow):
         selected_items = self.message_list.selectedItems()
         if not selected_items:
             return
-        message_id = selected_items[0].data(QtCore.Qt.UserRole)
+        message_id = selected_items[0].data(Qt.UserRole)
         # Call the method to mark the message as read
         self.mark_message_as_read(message_id)
 
@@ -577,7 +578,7 @@ class GmailManager(QtWidgets.QMainWindow):
                 label_item = self.label_list.item(index)
                 label_name = label_item.text()
                 if re.match(r'^UNREAD', label_name, re.IGNORECASE):
-                    unread_label_id = label_item.data(QtCore.Qt.UserRole)
+                    unread_label_id = label_item.data(Qt.UserRole)
                     break
             if unread_label_id:
                 unread_messages = list_messages(self.service, unread_label_id)
@@ -592,7 +593,7 @@ class GmailManager(QtWidgets.QMainWindow):
         selected_items = self.message_list.selectedItems()
         if not selected_items:
             return
-        message_id = selected_items[0].data(QtCore.Qt.UserRole)
+        message_id = selected_items[0].data(Qt.UserRole)
         # Call the method to mark the message as unread
         self.mark_message_as_not_read(message_id)
 
@@ -672,7 +673,7 @@ class GmailManager(QtWidgets.QMainWindow):
         selected_items = self.message_list.selectedItems()
         if not selected_items:
             return
-        message_id = selected_items[0].data(QtCore.Qt.UserRole)
+        message_id = selected_items[0].data(Qt.UserRole)
         reply = QtWidgets.QMessageBox.question(self, 'Delete Message', 'Are you sure you want to delete this message?', QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No, QtWidgets.QMessageBox.No)
 
         if reply == QtWidgets.QMessageBox.Yes:
