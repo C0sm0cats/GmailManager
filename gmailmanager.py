@@ -548,7 +548,6 @@ class GmailManager(QtWidgets.QMainWindow):
         else:
             to_emails = to_emails  # In case there are no angle brackets
 
-        content = ""
         if 'text/html' in [part.get('mimeType') for part in parts]:
             content = self.extract_html([payload])
         else:
@@ -614,13 +613,13 @@ class GmailManager(QtWidgets.QMainWindow):
             if 'body' in part and part['body']:
                 if 'data' in part['body']:
                     data = part['body']['data']
-                    result += self.decode_base64(data).decode("utf-8")
+                    result += GmailManager.decode_base64(data).decode("utf-8")
                 elif 'attachmentId' in part['body']:
                     attachment_id = part['body']['attachmentId']
                     # Use attachmentId from current part
                     attachment = self.service.users().messages().attachments().get(userId='me', messageId=part['id'], id=attachment_id).execute()
                     data = attachment['data']
-                    result += self.decode_base64(data).decode("utf-8")
+                    result += GmailManager.decode_base64(data).decode("utf-8")
             elif 'parts' in part and part['parts']:
                 if 'mimeType' in part and part["mimeType"] == "multipart/alternative":
                     result += self.extract_data(part['parts'])
@@ -656,11 +655,12 @@ class GmailManager(QtWidgets.QMainWindow):
         if 'body' in matching_part and matching_part['body']:
             if 'data' in matching_part['body']:
                 data = matching_part['body']['data']
-                html_data = self.decode_base64(data).decode('utf-8')
+                html_data = GmailManager.decode_base64(data).decode('utf-8')
                 return html_data
         return ""
 
-    def decode_base64(self, data):
+    @staticmethod
+    def decode_base64(data):
         missing_padding = 4 - len(data) % 4
         if missing_padding:
             data += '=' * missing_padding
