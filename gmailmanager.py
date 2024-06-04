@@ -14,6 +14,7 @@ from googleapiclient.errors import HttpError
 from email.message import EmailMessage
 from PyQt5.QtWebEngineWidgets import QWebEngineView
 from PyQt5 import QtWidgets, QtGui, QtCore
+from PyQt5.QtWidgets import QPushButton
 from PyQt5.QtCore import Qt
 from PyQt5.QtCore import QTimer
 
@@ -208,33 +209,33 @@ class GmailManager(QtWidgets.QMainWindow):
         self.setGeometry(100, 100, 1200, 800)
 
         toolbar = self.addToolBar('Toolbar')
-        new_message_action = QtWidgets.QAction('New Message', self)
-        toolbar.addAction(new_message_action)
-        new_message_action.triggered.connect(self.new_message)
+        new_message = QPushButton("New Message")
+        toolbar.addWidget(new_message)
+        new_message.clicked.connect(self.new_message)
 
-        refresh_action = QtWidgets.QAction('Refresh', self)
-        toolbar.addAction(refresh_action)
-        refresh_action.triggered.connect(self.refresh_labels)
+        refresh_action = QPushButton('Refresh', self)
+        toolbar.addWidget(refresh_action)
+        refresh_action.clicked.connect(self.refresh_labels)
 
-        delete_action = QtWidgets.QAction('Delete', self)
-        toolbar.addAction(delete_action)
-        delete_action.triggered.connect(self.delete_message)
+        delete_action = QPushButton('Delete', self)
+        toolbar.addWidget(delete_action)
+        delete_action.clicked.connect(self.delete_message)
 
-        mark_as_read_action = QtWidgets.QAction('Mark as Read', self)
-        toolbar.addAction(mark_as_read_action)
-        mark_as_read_action.triggered.connect(self.mark_message_as_read_from_button)
+        mark_as_read_action = QPushButton('Mark as Read', self)
+        toolbar.addWidget(mark_as_read_action)
+        mark_as_read_action.clicked.connect(self.mark_message_as_read_from_button)
 
-        mark_as_not_read_action = QtWidgets.QAction('Mark as Not Read', self)
-        toolbar.addAction(mark_as_not_read_action)
-        mark_as_not_read_action.triggered.connect(self.mark_message_as_not_read_from_button)
+        mark_as_not_read_action = QPushButton('Mark as Not Read', self)
+        toolbar.addWidget(mark_as_not_read_action)
+        mark_as_not_read_action.clicked.connect(self.mark_message_as_not_read_from_button)
 
-        empty_trash_action = QtWidgets.QAction('Empty Trash', self)
-        toolbar.addAction(empty_trash_action)
-        empty_trash_action.triggered.connect(self.empty_trash)
+        empty_trash_action = QPushButton('Empty Trash', self)
+        toolbar.addWidget(empty_trash_action)
+        empty_trash_action.clicked.connect(self.empty_trash)
 
-        quit_action = QtWidgets.QAction('Quit', self)
-        toolbar.addAction(quit_action)
-        quit_action.triggered.connect(self.close)
+        quit_action = QPushButton('Quit', self)
+        toolbar.addWidget(quit_action)
+        quit_action.clicked.connect(self.close)
 
         # Create an icon to indicate UNREAD messages
         self.unread_message_icon = QtGui.QIcon("icons/unread_message_notif.png")
