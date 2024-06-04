@@ -529,7 +529,14 @@ class GmailManager(QtWidgets.QMainWindow):
         date_str = headers.get('Date', 'No Date')
         from_email = headers.get('From', 'No Sender')
         to_emails = headers.get('To', 'No Recipient')
-        # Clean email addresses from angle brackets
+
+        # Use regular expressions to clean up email addresses
+        from_email_cleaned = re.findall(r'<([^>]+)>', from_email)
+        if from_email_cleaned:
+            from_email = from_email_cleaned[0].strip('"')
+        else:
+            from_email = from_email.strip('"')
+
         to_emails_cleaned = re.findall(r'<([^>]+)>', to_emails)
         if to_emails_cleaned:
             to_emails = ', '.join(to_emails_cleaned)
