@@ -536,7 +536,8 @@ class GmailManager(QtWidgets.QMainWindow):
         else:
             content = self.extract_data([payload])
 
-        self.message_content.setHtml(f"<h1>{subject}</h1><p>{date_str}</p><p>From: {from_email}</p><p>To: {to_emails}</p><hr>{content}")
+        escaped_content = content.replace(';', '&#59;')
+        self.message_content.setHtml(f"<h1>{subject}</h1><p>{date_str}</p><p>From: {from_email}</p><p>To: {to_emails}</p><hr>{escaped_content}")
 
     def mark_message_as_read_from_button(self):
         # Retrieve the ID of the selected message in the list of messages
