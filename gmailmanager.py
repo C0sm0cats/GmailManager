@@ -529,6 +529,12 @@ class GmailManager(QtWidgets.QMainWindow):
         date_str = headers.get('Date', 'No Date')
         from_email = headers.get('From', 'No Sender')
         to_emails = headers.get('To', 'No Recipient')
+        # Clean email addresses from angle brackets
+        to_emails_cleaned = re.findall(r'<([^>]+)>', to_emails)
+        if to_emails_cleaned:
+            to_emails = ', '.join(to_emails_cleaned)
+        else:
+            to_emails = to_emails  # In case there are no angle brackets
 
         content = ""
         if 'text/html' in [part.get('mimeType') for part in parts]:
