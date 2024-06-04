@@ -532,7 +532,7 @@ class GmailManager(QtWidgets.QMainWindow):
 
         headers = {header['name']: header['value'] for header in payload.get('headers', [])}
         subject = headers.get('Subject', 'No Subject')
-        date_str = headers.get('Date', 'No Date')
+        date = headers.get('Date', 'No Date')
         from_email = headers.get('From', 'No Sender')
         to_emails = headers.get('To', 'No Recipient')
 
@@ -554,7 +554,10 @@ class GmailManager(QtWidgets.QMainWindow):
         else:
             content = self.extract_data([payload])
 
-        self.message_content.setHtml(f"<h2 style='margin-top: 10px;'>{subject}</h2><div>{date_str}</div><div>From: {from_email}</div><div>To: {to_emails}</div><hr>{content}")
+        date_str = f"<strong>Date:</strong> {date}"
+        from_email_str = f"<strong>From:</strong> {from_email}"
+        to_emails_str = f"<strong>To:</strong> {to_emails}"
+        self.message_content.setHtml(f"<h2 style='margin-top: 10px;'>{subject}</h2><div>{date_str}</div><div>{from_email_str}</div><div>{to_emails_str}</div><hr>{content}")
 
     def mark_message_as_read_from_button(self):
         # Retrieve the ID of the selected message in the list of messages
