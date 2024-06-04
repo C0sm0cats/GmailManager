@@ -115,7 +115,7 @@ def list_labels(service):
             order = label_order.get(label['name'].upper(), float('inf'))
             type_order = label_order.get(label['type'], float('inf'))
 
-            # If the type is 'user', sort by name and subname
+            # If the type is 'user', sort by name and subname depth
             if label['type'] == 'user':
                 parts = label['name'].split('/')
                 # Use tuples to sort by multiple levels
@@ -612,7 +612,8 @@ class GmailManager(QtWidgets.QMainWindow):
                     result += self.decode_base64(data).decode("utf-8")
                 elif 'attachmentId' in part['body']:
                     attachment_id = part['body']['attachmentId']
-                    attachment = self.service.users().messages().attachments().get(userId='me', messageId=message_id, id=attachment_id).execute()
+                    # Use attachmentId from current part
+                    attachment = self.service.users().messages().attachments().get(userId='me', messageId=part['id'], id=attachment_id).execute()
                     data = attachment['data']
                     result += self.decode_base64(data).decode("utf-8")
             elif 'parts' in part and part['parts']:
