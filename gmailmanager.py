@@ -1,4 +1,9 @@
 import os
+import sys
+import re
+import logging
+import json
+import pytz
 import base64
 import mimetypes
 from google.auth.transport.requests import Request
@@ -6,14 +11,10 @@ from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
-import logging
-import json
-import pytz
 from email.message import EmailMessage
+from PyQt5.QtWebEngineWidgets import QWebEngineView
 from PyQt5 import QtWidgets, QtGui, QtCore
 from PyQt5.QtCore import QTimer
-import sys
-import re
 
 #logging.basicConfig(level=logging.DEBUG)
 
@@ -238,39 +239,25 @@ class GmailManager(QtWidgets.QMainWindow):
 
         central_widget = QtWidgets.QWidget()
         self.setCentralWidget(central_widget)
+        layout = QtWidgets.QVBoxLayout(central_widget)
 
         self.label_list = QtWidgets.QListWidget()
         self.message_list = QtWidgets.QListWidget()
-        self.message_content = QtWidgets.QTextEdit()
-        self.message_content.setReadOnly(True)
+        self.message_content = QWebEngineView()
 
         self.label_list.itemSelectionChanged.connect(self.on_label_selected)
         self.message_list.itemSelectionChanged.connect(self.on_message_selected)
 
-        self.label_list.itemSelectionChanged.connect(self.on_label_selected)
-        self.message_list.itemSelectionChanged.connect(self.on_message_selected)
-
-        # self.message_list.model().rowsInserted.connect(self.adjust_splitter)
-        # self.message_list.model().rowsRemoved.connect(self.adjust_splitter)
-
-        splitter1 = QtWidgets.QSplitter(QtCore.Qt.Horizontal)
+        self.splitter1 = QtWidgets.QSplitter(QtCore.Qt.Horizontal)
         self.splitter2 = QtWidgets.QSplitter(QtCore.Qt.Vertical)
 
-        splitter1.addWidget(self.label_list)
-        splitter1.addWidget(self.splitter2)
+        self.splitter1.addWidget(self.label_list)
+        self.splitter1.addWidget(self.splitter2)
 
         self.splitter2.addWidget(self.message_list)
         self.splitter2.addWidget(self.message_content)
 
-        layout = QtWidgets.QVBoxLayout(central_widget)
-        layout.addWidget(splitter1)
-
-        self.splitter1 = splitter1  # Store a reference to splitter1
-        self.splitter2 = self.splitter2  # Store a reference to splitter2
-
-        # Set the stretch factors for splitter2
-        self.splitter2.setStretchFactor(0, 1)  # The message_list gets one share
-        self.splitter2.setStretchFactor(1, 3)  # The message_content gets three shares
+        layout.addWidget(self.splitter1)
 
         self.refresh_labels()
 
@@ -303,13 +290,6 @@ class GmailManager(QtWidgets.QMainWindow):
 
         # Set initial checkmark for the default frequency
         self.update_frequency_menu()
-
-    # def adjust_splitter(self):
-    #     # Adjust the size of splitter2 based on the content of message_list
-    #     size_hint = self.message_list.sizeHintForRow(0) * self.message_list.count() + 2 * self.message_list.frameWidth()
-    #     margin = 20  # Additional margin
-    #     self.message_list.setMaximumHeight(size_hint + margin)
-    #     self.splitter2.setSizes([size_hint + margin, self.splitter2.size().height() - (size_hint + margin)])
 
     @staticmethod
     def get_label_id_by_name(service, label_name):
@@ -424,7 +404,7 @@ class GmailManager(QtWidgets.QMainWindow):
 
         # Adjust the size of splitter1 based on the maximum length of the labels
         max_label_length = max([self.label_list.fontMetrics().boundingRect(label[0]).width() for label in self.labels])
-        self.label_list.setFixedWidth(max_label_length + 40)  # Add a margin for some extra space.
+        self.label_list.setFixedWidth(max_label_length + 50)  # Add a margin for some extra space.
         self.splitter1.setSizes([max_label_length + 20, self.width() - max_label_length - 20])
 
         # Try to retrieve the label by its name
@@ -486,6 +466,9 @@ class GmailManager(QtWidgets.QMainWindow):
             return item
         return None
 
+    def clear_web_view(self):
+        self.message_content.setUrl(QtCore.QUrl("about:blank"))
+
     def on_label_selected(self):
         self.message_list.clear()
         selected_items = self.label_list.selectedItems()
@@ -525,7 +508,7 @@ class GmailManager(QtWidgets.QMainWindow):
 
         # Clear the message content if there are no messages for the selected label
         if not messages:
-            self.message_content.clear()
+            self.clear_web_view()
 
         # Select the first item in the list of messages
         if self.message_list.count() > 0:
@@ -682,7 +665,7 @@ class GmailManager(QtWidgets.QMainWindow):
 
                 # Clear the list of messages and reset the message content
                 self.message_list.clear()
-                self.message_content.clear()
+                self.clear_web_view()
 
                 self.refresh_labels()
 
