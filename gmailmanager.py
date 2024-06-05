@@ -228,7 +228,7 @@ class GmailManager(QtWidgets.QMainWindow):
         self.timer_active = True
         self.progress_bar = QProgressBar()
         self.initUI()
-        self.check_for_unread_messages()  # Start automatically checking for new messages
+        self.check_for_new_and_unread_messages()  # Start automatically checking for new messages
 
     def initUI(self):
         self.setWindowTitle('Gmail Manager')
@@ -380,33 +380,31 @@ class GmailManager(QtWidgets.QMainWindow):
         self.update_frequency_menu()
         print("Timer disabled")
 
-    def check_for_unread_messages(self):
+    def check_for_new_and_unread_messages(self):
         # Logic to check UNREAD messages
         # Use QTimer to schedule periodic checks
-
-        self.refresh_labels()
-
-        # Check UNREAD messages in the UNREAD label
-        label_name = 'UNREAD'
-        label_id = self.get_label_id_by_name(self.service, label_name)
-
-        if label_id:
-            unread_messages = list_messages(self.service, label_id)
-            if unread_messages:
-                # If UNREAD messages are found in the UNREAD label, update the notification icon
-                self.unread_message_action.setEnabled(True)
-                self.unread_message_action.setText(f"UNREAD Messages Received")
-            else:
-                # Disable the action if no UNREAD messages are detected
-                self.unread_message_action.setEnabled(False)
-        else:
-            print("Label '{}' not found.".format(label_name))
-
-        # Schedule the next periodic check in 30 seconds
-        #QTimer.singleShot(30000, self.check_for_unread_messages)
-        # Schedule the next periodic check using the selected frequency
         if self.timer_active:
-            QTimer.singleShot(self.check_frequency, self.check_for_unread_messages)
+
+            self.refresh_labels()
+
+            # Check UNREAD messages in the UNREAD label
+            label_name = 'UNREAD'
+            label_id = self.get_label_id_by_name(self.service, label_name)
+
+            if label_id:
+                unread_messages = list_messages(self.service, label_id)
+                if unread_messages:
+                    # If UNREAD messages are found in the UNREAD label, update the notification icon
+                    self.unread_message_action.setEnabled(True)
+                    self.unread_message_action.setText(f"UNREAD Messages Received")
+                else:
+                    # Disable the action if no UNREAD messages are detected
+                    self.unread_message_action.setEnabled(False)
+            else:
+                print("Label '{}' not found.".format(label_name))
+
+            # Schedule the next periodic check using the selected frequency
+            QTimer.singleShot(self.check_frequency, self.check_for_new_and_unread_messages)
 
     def refresh_labels(self, select_label=None):
         # Display the progress bar before processing.
