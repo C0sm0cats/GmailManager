@@ -12,6 +12,8 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from email.message import EmailMessage
+from email.utils import parsedate_to_datetime
+from tzlocal import get_localzone
 from PyQt5.QtWebEngineWidgets import QWebEngineView
 from PyQt5 import QtWidgets, QtGui, QtCore
 from PyQt5.QtWidgets import QPushButton
@@ -23,6 +25,22 @@ from PyQt5.QtCore import QTimer
 # We need full access to delete emails
 SCOPES = ["https://mail.google.com/"]
 # SCOPES = ["https://www.googleapis.com/auth/gmail.readonly", "https://www.googleapis.com/auth/gmail.modify"]
+
+
+def get_real_date(date_string):
+    if date_string == 'No Date':
+        return date_string
+
+    parsed_date = parsedate_to_datetime(date_string)
+    if parsed_date:
+        # Convertir la date en heure locale de l'utilisateur
+        local_tz = get_localzone()
+        local_date = parsed_date.astimezone(local_tz)
+        # Formater la date selon un format spécifique
+        formatted_date = local_date.strftime("%Y-%m-%d %H:%M:%S %Z")
+        return formatted_date
+    else:
+        return 'Invalid Date'
 
 
 def convert_expiry_to_paris_time(expiry_utc):
@@ -554,7 +572,10 @@ class GmailManager(QtWidgets.QMainWindow):
         else:
             content = self.extract_data([payload])
 
-        date_str = f"<strong>Date:</strong> {date}"
+        # clean up date
+        real_date = get_real_date(date)
+
+        date_str = f"<strong>Date:</strong> {real_date}"
         from_email_str = f"<strong>From:</strong> {from_email}"
         to_emails_str = f"<strong>To:</strong> {to_emails}"
         self.message_content.setHtml(f"<h2 style='margin-top: 10px;'>{subject}</h2><div>{date_str}</div><div>{from_email_str}</div><div>{to_emails_str}</div><hr>{content}")
