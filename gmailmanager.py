@@ -226,6 +226,14 @@ class GmailManager(QtWidgets.QMainWindow):
         self.service = service
         self.check_frequency = 180000  # Initialize the default check frequency
         self.timer_active = True
+
+        self.setup_menu()
+
+        # Create and start QTimer
+        self.timer = QTimer(self)
+        self.timer.timeout.connect(self.check_for_new_and_unread_messages)
+        self.update_timer()
+
         self.progress_bar = QProgressBar()
         self.initUI()
         self.check_for_new_and_unread_messages()  # Start automatically checking for new messages
@@ -306,30 +314,6 @@ class GmailManager(QtWidgets.QMainWindow):
             inbox_index = self.label_list.indexFromItem(inbox_item).row()
             self.label_list.setCurrentRow(inbox_index)
 
-        # Add the dropdown menu to the menu bar to select the check frequency.
-        menubar = self.menuBar()
-        self.frequency_menu = menubar.addMenu('Set Check Frequency')
-        self.one_minute_action = QtWidgets.QAction('1 minute', self)
-        self.two_minutes_action = QtWidgets.QAction('2 minutes', self)
-        self.three_minutes_action = QtWidgets.QAction('3 minutes', self)
-        self.custom_interval_action = QtWidgets.QAction('Custom interval', self)
-        self.disable_timer_action = QtWidgets.QAction('Disable timer', self)
-
-        self.frequency_menu.addAction(self.one_minute_action)
-        self.frequency_menu.addAction(self.two_minutes_action)
-        self.frequency_menu.addAction(self.three_minutes_action)
-        self.frequency_menu.addAction(self.custom_interval_action)
-        self.frequency_menu.addAction(self.disable_timer_action)
-
-        self.one_minute_action.triggered.connect(lambda: self.set_check_frequency(60000))
-        self.two_minutes_action.triggered.connect(lambda: self.set_check_frequency(120000))
-        self.three_minutes_action.triggered.connect(lambda: self.set_check_frequency(180000))
-        self.custom_interval_action.triggered.connect(self.set_custom_interval)
-        self.disable_timer_action.triggered.connect(self.disable_timer)
-
-        # Set initial checkmark for the default frequency
-        self.update_frequency_menu()
-
     @staticmethod
     def get_label_id_by_name(service, label_name):
         labels = service.users().labels().list(userId='me').execute()
@@ -338,83 +322,83 @@ class GmailManager(QtWidgets.QMainWindow):
                 return label['id']
         return None
 
-    def update_frequency_menu(self):
-        self.one_minute_action.setCheckable(True)
-        self.two_minutes_action.setCheckable(True)
-        self.three_minutes_action.setCheckable(True)
-        self.custom_interval_action.setCheckable(True)
-        self.disable_timer_action.setCheckable(True)
+    def setup_menu(self):
+        menubar = self.menuBar()
+        self.frequency_menu = menubar.addMenu('Set Check Frequency')
 
-        if self.timer_active:
-            self.disable_timer_action.setChecked(False)  # Uncheck "disable" if timer is active
-            self.one_minute_action.setChecked(self.check_frequency == 60000)
-            self.two_minutes_action.setChecked(self.check_frequency == 120000)
-            self.three_minutes_action.setChecked(self.check_frequency == 180000)
-            if self.check_frequency not in [60000, 120000, 180000]:
-                self.custom_interval_action.setChecked(True)
-                self.custom_interval_action.setText(f'Custom interval ({self.check_frequency // 60000} minutes)')
+        self.actions = [
+            ('1 minute', 60000),
+            ('2 minutes', 120000),
+            ('3 minutes', 180000),
+            ('Custom interval', None),
+            ('Disable timer', None)
+        ]
+
+        for text, frequency in self.actions:
+            action = QtWidgets.QAction(text, self)
+            if frequency is not None:
+                action.triggered.connect(lambda _, f=frequency: self.set_check_frequency(f))
             else:
-                self.custom_interval_action.setChecked(False)
-                self.custom_interval_action.setText('Custom interval')
-        else:
-            self.disable_timer_action.setChecked(True)  # Check "disable" if timer is inactive
-            self.one_minute_action.setChecked(False)
-            self.two_minutes_action.setChecked(False)
-            self.three_minutes_action.setChecked(False)
-            self.custom_interval_action.setChecked(False)
+                action.triggered.connect(self.handle_special_action)
+            self.frequency_menu.addAction(action)
+
+    def handle_special_action(self):
+        action_text = self.sender().text()
+        if action_text == 'Custom interval':
+            self.set_custom_interval()
+        elif action_text == 'Disable timer':
+            self.disable_timer()
 
     def set_check_frequency(self, frequency):
         self.check_frequency = frequency
-        if self.timer_active:
-            # Only reactivate the timer if it was previously active
-            self.update_frequency_menu()  # Update frequency menu
-            print(f"Check frequency set to {frequency} milliseconds")
-            # Start periodic checks after delay
-            QTimer.singleShot(self.check_frequency, self.check_for_new_and_unread_messages)
-        else:
-            # Update frequency menu without starting periodic checks if the timer was previously disabled
-            self.timer_active = True  # Re-enable timer
-            self.update_frequency_menu()  # Update frequency menu
-            print(f"Check frequency set to {frequency} milliseconds")
-            # Start periodic checks after delay
-            QTimer.singleShot(self.check_frequency, self.check_for_new_and_unread_messages)
+        self.timer.stop()
+        self.update_timer()
+        print(f"Check frequency set to {frequency} milliseconds")
+        if not self.timer_active:
+            self.timer_active = True
+            self.update_timer()
 
     def set_custom_interval(self):
         interval, ok = QtWidgets.QInputDialog.getInt(self, 'Custom Interval', 'Enter interval in minutes:', 1, 1, 1440)
         if ok:
-            self.custom_interval = interval
-            self.set_check_frequency(interval * 60000)
+            self.check_frequency = interval * 60000
+            if not self.timer_active:
+                self.timer_active = True
+            self.update_timer()
+            print(f"Check frequency set to {self.check_frequency} milliseconds")
 
     def disable_timer(self):
         self.timer_active = False
-        self.update_frequency_menu()
+        self.update_timer()
         print("Timer disabled")
+
+    def update_timer(self):
+        if self.timer_active:
+            self.timer.start(self.check_frequency)
+        else:
+            self.timer.stop()
 
     def check_for_new_and_unread_messages(self):
         # Logic to check UNREAD messages
         # Use QTimer to schedule periodic checks
-        if self.timer_active:
 
-            self.refresh_labels()
+        self.refresh_labels()
 
-            # Check UNREAD messages in the UNREAD label
-            label_name = 'UNREAD'
-            label_id = self.get_label_id_by_name(self.service, label_name)
+        # Check UNREAD messages in the UNREAD label
+        label_name = 'UNREAD'
+        label_id = self.get_label_id_by_name(self.service, label_name)
 
-            if label_id:
-                unread_messages = list_messages(self.service, label_id)
-                if unread_messages:
-                    # If UNREAD messages are found in the UNREAD label, update the notification icon
-                    self.unread_message_action.setEnabled(True)
-                    self.unread_message_action.setText(f"UNREAD Messages Received")
-                else:
-                    # Disable the action if no UNREAD messages are detected
-                    self.unread_message_action.setEnabled(False)
+        if label_id:
+            unread_messages = list_messages(self.service, label_id)
+            if unread_messages:
+                # If UNREAD messages are found in the UNREAD label, update the notification icon
+                self.unread_message_action.setEnabled(True)
+                self.unread_message_action.setText(f"UNREAD Messages Received")
             else:
-                print("Label '{}' not found.".format(label_name))
-
-            # Schedule the next periodic check using the selected frequency
-            QTimer.singleShot(self.check_frequency, self.check_for_new_and_unread_messages)
+                # Disable the action if no UNREAD messages are detected
+                self.unread_message_action.setEnabled(False)
+        else:
+            print("Label '{}' not found.".format(label_name))
 
     def refresh_labels(self, select_label=None):
         # Display the progress bar before processing.
