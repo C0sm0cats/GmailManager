@@ -639,16 +639,21 @@ class GmailManager(QtWidgets.QMainWindow):
 
     def find_matching_part(self, parts, mime_type, max_depth, current_depth=0):
         matching_part = None
+        max_size = 0
 
         for part in parts:
             if 'mimeType' in part and part['mimeType'] == mime_type:
-                return part
+                if 'body' in part and part['body'] and 'data' in part['body']:
+                    if part['body']['size'] > max_size:
+                        matching_part = part
+                        max_size = part['body']['size']
 
             if 'parts' in part and current_depth < max_depth:
                 matched_part = self.find_matching_part(part['parts'], mime_type, max_depth, current_depth=current_depth+1)
                 if matched_part:
-                    matching_part = matched_part
-
+                    if matched_part['body']['size'] > max_size:
+                        matching_part = matched_part
+                        max_size = matched_part['body']['size']
         return matching_part
 
     def extract_html(self, parts, max_depth=3):
