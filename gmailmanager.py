@@ -16,7 +16,7 @@ from email.utils import parsedate_to_datetime
 from tzlocal import get_localzone
 from PyQt5.QtWebEngineWidgets import QWebEngineView
 from PyQt5 import QtWidgets, QtGui, QtCore
-from PyQt5.QtWidgets import QPushButton
+from PyQt5.QtWidgets import QPushButton, QProgressBar
 from PyQt5.QtCore import Qt
 from PyQt5.QtCore import QTimer
 
@@ -219,6 +219,7 @@ class GmailManager(QtWidgets.QMainWindow):
         self.service = service
         self.check_frequency = 180000  # Initialize the default check frequency
         self.timer_active = True
+        self.progress_bar = QProgressBar()
         self.initUI()
         self.check_for_unread_messages()  # Start automatically checking for new messages
 
@@ -264,6 +265,13 @@ class GmailManager(QtWidgets.QMainWindow):
         central_widget = QtWidgets.QWidget()
         self.setCentralWidget(central_widget)
         layout = QtWidgets.QVBoxLayout(central_widget)
+
+        self.progress_bar = QtWidgets.QProgressBar()
+        self.progress_bar.setFixedHeight(20)
+        self.progress_bar.setFormat(" Refreshing labels & messages... %p%")
+        self.progress_bar.setStyleSheet("QProgressBar {border: 2px solid grey; border-radius: 5px; background-color: #FFFFFF;} QProgressBar::chunk {background-color: #37c9e1;}")
+        layout.addWidget(self.progress_bar)
+        self.progress_bar.setVisible(False)
 
         self.label_list = QtWidgets.QListWidget()
         self.message_list = QtWidgets.QListWidget()
@@ -394,6 +402,8 @@ class GmailManager(QtWidgets.QMainWindow):
             QTimer.singleShot(self.check_frequency, self.check_for_unread_messages)
 
     def refresh_labels(self, select_label=None):
+        # Display the progress bar before processing.
+        self.process_data_with_progress()
         # Save the index of the previously selected row and the label name
         previous_index = self.label_list.currentRow()
         previous_label_name = None
@@ -484,6 +494,21 @@ class GmailManager(QtWidgets.QMainWindow):
                 # If UNREAD messages are found in the UNREAD label, update the notification icon
                 self.unread_message_action.setEnabled(True)
                 self.unread_message_action.setText(f"UNREAD Messages Received")
+
+    def show_progress_bar(self):
+        self.progress_bar.setVisible(True)
+
+    def hide_progress_bar(self):
+        self.progress_bar.setVisible(False)
+
+    def process_data_with_progress(self):
+        self.show_progress_bar()
+        total_steps = 100
+        for i in range(total_steps):
+            progress_value = (i + 1) * 100 / total_steps
+            self.progress_bar.setValue(int(progress_value))
+            QtCore.QThread.msleep(100)
+        self.hide_progress_bar()
 
     def find_label_item(self, label_name):
         for item in self.label_list.findItems(label_name, Qt.MatchRegExp):
