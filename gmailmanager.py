@@ -367,9 +367,17 @@ class GmailManager(QtWidgets.QMainWindow):
         self.check_frequency = frequency
         if self.timer_active:
             # Only reactivate the timer if it was previously active
-            self.update_frequency_menu()
+            self.update_frequency_menu()  # Update frequency menu
             print(f"Check frequency set to {frequency} milliseconds")
-            self.check_for_new_and_unread_messages()  # Start periodic checks
+            # Start periodic checks after delay
+            QTimer.singleShot(self.check_frequency, self.check_for_new_and_unread_messages)
+        else:
+            # Update frequency menu without starting periodic checks if the timer was previously disabled
+            self.timer_active = True  # Re-enable timer
+            self.update_frequency_menu()  # Update frequency menu
+            print(f"Check frequency set to {frequency} milliseconds")
+            # Start periodic checks after delay
+            QTimer.singleShot(self.check_frequency, self.check_for_new_and_unread_messages)
 
     def set_custom_interval(self):
         interval, ok = QtWidgets.QInputDialog.getInt(self, 'Custom Interval', 'Enter interval in minutes:', 1, 1, 1440)
