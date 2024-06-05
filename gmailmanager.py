@@ -12,6 +12,7 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from email.message import EmailMessage
+from datetime import datetime
 from email.utils import parsedate_to_datetime
 from tzlocal import get_localzone
 from PyQt5.QtWebEngineWidgets import QWebEngineView
@@ -31,7 +32,13 @@ def get_real_date(date_string):
     if date_string == 'No Date':
         return date_string
 
-    parsed_date = parsedate_to_datetime(date_string)
+    try:
+        # Attempt to parse the date with the specific format YYYY.MM.DD-HH.MM.SS.
+        parsed_date = datetime.strptime(date_string, '%Y.%m.%d-%H.%M.%S')
+    except ValueError:
+        # If the specific format fails, try with the standard format.
+        parsed_date = parsedate_to_datetime(date_string)
+
     if parsed_date:
         # Convert the date to the user's local time
         local_tz = get_localzone()
@@ -592,17 +599,16 @@ class GmailManager(QtWidgets.QMainWindow):
         else:
             to_emails = to_emails  # In case there are no angle brackets
 
+        real_date = get_real_date(date)
+        date_str = f"<strong>Date:</strong> {real_date}"
+        from_email_str = f"<strong>From:</strong> {from_email}"
+        to_emails_str = f"<strong>To:</strong> {to_emails}"
+
         if 'text/html' in [part.get('mimeType') for part in parts]:
             content = self.extract_html([payload])
         else:
             content = self.extract_data([payload])
 
-        # clean up date
-        real_date = get_real_date(date)
-
-        date_str = f"<strong>Date:</strong> {real_date}"
-        from_email_str = f"<strong>From:</strong> {from_email}"
-        to_emails_str = f"<strong>To:</strong> {to_emails}"
         self.message_content.setHtml(f"<h2 style='margin-top: 10px;'>{subject}</h2><div>{date_str}</div><div>{from_email_str}</div><div>{to_emails_str}</div><hr>{content}")
 
     def mark_message_as_read_from_button(self):
@@ -659,28 +665,21 @@ class GmailManager(QtWidgets.QMainWindow):
 
     def extract_data(self, parts):
         result = ""
+        max_size = 0
         for part in parts:
-            if 'body' in part and part['body']:
-                if 'data' in part['body']:
-                    data = part['body']['data']
-                    result += GmailManager.decode_base64(data).decode("utf-8")
-                elif 'attachmentId' in part['body']:
-                    attachment_id = part['body']['attachmentId']
-                    # Use attachmentId from current part
-                    attachment = self.service.users().messages().attachments().get(userId='me', messageId=part['id'], id=attachment_id).execute()
-                    data = attachment['data']
-                    result += GmailManager.decode_base64(data).decode("utf-8")
-            elif 'parts' in part and part['parts']:
-                if 'mimeType' in part and part["mimeType"] == "multipart/alternative":
-                    result += self.extract_data(part['parts'])
-                elif 'mimeType' in part and part["mimeType"] == "multipart/mixed":
-                    for sub_part in part['parts']:
-                        if 'mimeType' in sub_part and sub_part['mimeType'] != "multipart/*":
-                            result += self.extract_data([sub_part])
-                        else:
-                            result += self.extract_data(sub_part['parts'])
-                else:
-                    return self.extract_data(part['parts'])
+            if 'body' in part:
+                body_size = part['body']['size']
+                if body_size > max_size:
+                    max_size = body_size
+                    if 'data' in part['body']:
+                        data = part['body']['data']
+                        result = GmailManager.decode_base64(data).decode("utf-8")
+                elif 'parts' in part:
+                    sub_data = self.extract_data(part['parts'])
+                    sub_size = len(sub_data)
+                    if sub_size > max_size:
+                        result = sub_data
+                        max_size = sub_size
         return result
 
     def find_matching_part(self, parts, mime_type, max_depth, current_depth=0):
