@@ -43,12 +43,12 @@ def get_real_date(date_string):
         return 'Invalid Date'
 
 
-def convert_expiry_to_paris_time(expiry_utc):
+def convert_expiry_to_local_time(expiry_utc):
+    local_timezone = get_localzone()
     utc_timezone = pytz.utc
-    paris_timezone = pytz.timezone('Europe/Paris')
     expiry_utc = utc_timezone.localize(expiry_utc)
-    expiry_paris = expiry_utc.astimezone(paris_timezone)
-    return expiry_paris
+    expiry_local = expiry_utc.astimezone(local_timezone)
+    return expiry_local
 
 
 def authenticate():
@@ -65,7 +65,7 @@ def authenticate():
                 print("Token refreshed:")
                 print(f"Access Token: {creds.token}")
                 print(f"Refresh Token: {creds.refresh_token}")
-                print("Expiry:", convert_expiry_to_paris_time(creds.expiry))
+                print("Expiry:", convert_expiry_to_local_time(creds.expiry))
             except Exception as e:
                 print(f"Error refreshing token: {e}")
                 flow = InstalledAppFlow.from_client_secrets_file("credentials.json", SCOPES)
@@ -73,14 +73,14 @@ def authenticate():
                 print("New authorization:")
                 print(f"Access Token: {creds.token}")
                 print(f"Refresh Token: {creds.refresh_token}")
-                print("Expiry:", convert_expiry_to_paris_time(creds.expiry))
+                print("Expiry:", convert_expiry_to_local_time(creds.expiry))
         else:
             flow = InstalledAppFlow.from_client_secrets_file("credentials.json", SCOPES)
             creds = flow.run_local_server(port=0)
             print("New authorization:")
             print(f"Access Token: {creds.token}")
             print(f"Refresh Token: {creds.refresh_token}")
-            print("Expiry:", convert_expiry_to_paris_time(creds.expiry))
+            print("Expiry:", convert_expiry_to_local_time(creds.expiry))
 
         with open(token_path, "w") as token:
             token.write(creds.to_json())
@@ -88,7 +88,7 @@ def authenticate():
         print("Existing token:")
         print(f"Access Token: {creds.token}")
         print(f"Refresh Token: {creds.refresh_token}")
-        print("Expiry:", convert_expiry_to_paris_time(creds.expiry))
+        print("Expiry:", convert_expiry_to_local_time(creds.expiry))
 
     return creds
 
