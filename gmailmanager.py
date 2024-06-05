@@ -33,10 +33,10 @@ def get_real_date(date_string):
 
     parsed_date = parsedate_to_datetime(date_string)
     if parsed_date:
-        # Convertir la date en heure locale de l'utilisateur
+        # Convert the date to the user's local time
         local_tz = get_localzone()
         local_date = parsed_date.astimezone(local_tz)
-        # Formater la date selon un format spécifique
+        # Format the date according to a specific format
         formatted_date = local_date.strftime("%Y-%m-%d %H:%M:%S %Z")
         return formatted_date
     else:
@@ -685,8 +685,21 @@ class GmailManager(QtWidgets.QMainWindow):
         if 'body' in matching_part and matching_part['body']:
             if 'data' in matching_part['body']:
                 data = matching_part['body']['data']
+
+                # Decode the data in UTF-8
                 html_data = GmailManager.decode_base64(data).decode('utf-8')
-                return html_data
+
+                # Search for the <meta> tag in the HTML content
+                meta_regex = r'<meta\s+name="viewport"\s+content="([^"]*)"\s*>'
+                match = re.search(meta_regex, html_data)
+
+                # If the <meta> tag is found, replace semicolons with commas in its content
+                if match:
+                    content_with_commas = match.group(1).replace(';', ',')
+                    html_data_with_commas = re.sub(meta_regex, lambda m: f'<meta name="viewport" content="{content_with_commas}">', html_data)
+                    return html_data_with_commas
+                else:
+                    return html_data
         return ""
 
     @staticmethod
