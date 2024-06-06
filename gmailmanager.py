@@ -294,6 +294,9 @@ class GmailManager(QtWidgets.QMainWindow):
         self.message_list = QtWidgets.QListWidget()
         self.message_content = QWebEngineView()
 
+        # Enable multiple selection in the messages list
+        self.message_list.setSelectionMode(QtWidgets.QAbstractItemView.ExtendedSelection)
+
         self.label_list.itemSelectionChanged.connect(self.on_label_selected)
         self.message_list.itemSelectionChanged.connect(self.on_message_selected)
 
@@ -632,21 +635,22 @@ class GmailManager(QtWidgets.QMainWindow):
         self.message_content.setHtml(f"<h2 style='margin-top: 10px;'>{subject}</h2><div>{date_str}</div><div>{from_email_str}</div><div>{to_emails_str}</div><hr>{content}")
 
     def mark_message_as_read_from_button(self):
-        # Retrieve the ID of the selected message in the list of messages
+        # Retrieve IDs of selected messages in the list of messages
         selected_items = self.message_list.selectedItems()
         if not selected_items:
             return
-        message_id = selected_items[0].data(Qt.UserRole)
-        # Call the method to mark the message as read
-        self.mark_message_as_read(message_id)
+        message_ids = [item.data(Qt.UserRole) for item in selected_items]
+        #print("Selected message IDs:", message_ids)
+        # Call the method to mark the messages as read
+        self.mark_messages_as_read(message_ids)
 
-    def mark_message_as_read(self, message_id):
+    def mark_messages_as_read(self, message_ids):
         try:
-            modify_request = {'removeLabelIds': ['UNREAD']}
-            self.service.users().messages().modify(userId='me', id=message_id, body=modify_request).execute()
-            print("Message marked as read successfully.")
-            # Refresh the labels to update the list of unread messages
-            self.refresh_labels()
+            for message_id in message_ids:
+                modify_request = {'removeLabelIds': ['UNREAD']}
+                self.service.users().messages().modify(userId='me', id=message_id, body=modify_request).execute()
+                #print(f"Message with ID {message_id} marked as read successfully.")
+            self.check_for_new_and_unread_messages()
             # Check if there are any messages left in the list of UNREAD
             # Search for the first label starting with "UNREAD" in the list of labels in the user interface
             unread_label_id = None
@@ -662,26 +666,27 @@ class GmailManager(QtWidgets.QMainWindow):
                     # Disable the action if no UNREAD messages are detected
                     self.unread_message_action.setEnabled(False)
         except HttpError as error:
-            QtWidgets.QMessageBox.critical(None, "Error", f"An error occurred while marking the message as read: {error}")
+            QtWidgets.QMessageBox.critical(None, "Error", f"An error occurred while marking the messages as read: {error}")
 
     def mark_message_as_not_read_from_button(self):
-        # Get the ID of the selected message in the list of messages
+        # Retrieve IDs of selected messages in the list of messages
         selected_items = self.message_list.selectedItems()
         if not selected_items:
             return
-        message_id = selected_items[0].data(Qt.UserRole)
-        # Call the method to mark the message as unread
-        self.mark_message_as_not_read(message_id)
+        message_ids = [item.data(Qt.UserRole) for item in selected_items]
+        #print("Selected message IDs:", message_ids)  # Print selected message IDs for debugging
+        # Call the method to mark the messages as unread
+        self.mark_messages_as_not_read(message_ids)
 
-    def mark_message_as_not_read(self, message_id):
+    def mark_messages_as_not_read(self, message_ids):
         try:
-            modify_request = {'addLabelIds': ['UNREAD']}
-            self.service.users().messages().modify(userId='me', id=message_id, body=modify_request).execute()
-            print("Message marked as not read successfully.")
-            # Refresh the labels to update the list of unread messages
-            self.refresh_labels()
+            for message_id in message_ids:
+                modify_request = {'addLabelIds': ['UNREAD']}
+                self.service.users().messages().modify(userId='me', id=message_id, body=modify_request).execute()
+                #print(f"Message with ID {message_id} marked as not read successfully.")
+            self.check_for_new_and_unread_messages()
         except HttpError as error:
-            QtWidgets.QMessageBox.critical(None, "Error", f"An error occurred while marking the message as not read: {error}")
+            QtWidgets.QMessageBox.critical(None, "Error", f"An error occurred while marking the messages as not read: {error}")
 
     def extract_data(self, parts):
         result = ""
@@ -758,22 +763,44 @@ class GmailManager(QtWidgets.QMainWindow):
         compose_dialog.exec_()
 
     def delete_message(self):
+        # Retrieve IDs of selected messages in the list of messages
         selected_items = self.message_list.selectedItems()
         if not selected_items:
             return
-        message_id = selected_items[0].data(Qt.UserRole)
-        reply = QtWidgets.QMessageBox.question(self, 'Delete Message', 'Are you sure you want to delete this message?', QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No, QtWidgets.QMessageBox.No)
-
+        message_ids = [item.data(Qt.UserRole) for item in selected_items]
+        #print("Selected message IDs:", message_ids)  # Print selected message IDs for debugging
+        if len(message_ids) == 1:
+            reply = QtWidgets.QMessageBox.question(self, 'Delete Message', 'Are you sure you want to delete this message?', QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No, QtWidgets.QMessageBox.No)
+        else:
+            reply = QtWidgets.QMessageBox.question(self, 'Delete Message', 'Are you sure you want to delete these messages?', QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No, QtWidgets.QMessageBox.No)
         if reply == QtWidgets.QMessageBox.Yes:
             try:
-                self.service.users().messages().delete(userId='me', id=message_id).execute()
-                QtWidgets.QMessageBox.information(self, 'Message Deleted', 'The message has been deleted.')
 
-                # Clear the list of messages and reset the message content
-                self.message_list.clear()
-                self.clear_web_view()
+                for message_id in message_ids:
+                    # Clear the message content (`message_content` is a QWebEngineView)
+                    self.message_content.deleteLater()  # Delete the old QWebEngineView instance
+                    self.message_content = QWebEngineView()  # Create a new instance
+                    self.splitter2.replaceWidget(1, self.message_content)  # Replace the old instance with the new one in the splitter
 
-                self.refresh_labels()
+                    # Remove the corresponding item from the list of messages
+                    items_to_remove = [item for item in self.message_list.findItems("", Qt.MatchContains) if item.data(Qt.UserRole) == message_id]
+                    for item in items_to_remove:
+                        self.message_list.takeItem(self.message_list.row(item))
+
+                    self.service.users().messages().delete(userId='me', id=message_id).execute()
+                    #QtWidgets.QMessageBox.information(self, 'Message Deleted', 'The message has been deleted.')
+                    #print(f"Message with ID {message_id} has been deleted successfully.")
+
+                # Create a QListWidgetItem to hold the refreshing text
+                refreshing_item = QtWidgets.QListWidgetItem(self.message_list)
+                refreshing_item.setSizeHint(QtCore.QSize(200, 50))  # Set the size of the item
+                refreshing_widget = RefreshingText()
+
+                # Set the widget as the item's widget
+                self.message_list.setItemWidget(refreshing_item, refreshing_widget)
+
+                # Check for new and unread messages
+                self.check_for_new_and_unread_messages()
 
                 # Select the first item in the list of messages
                 if self.message_list.count() > 0:
@@ -891,8 +918,8 @@ class ComposeDialog(QtWidgets.QDialog):
         subject = self.subject_field.text()
         body = self.body_field.toPlainText()
 
-        if not to or not subject or not body:
-            QtWidgets.QMessageBox.warning(self, 'Warning', 'All fields are required to save a draft.')
+        if not subject or not body:
+            QtWidgets.QMessageBox.warning(self, 'Warning', 'Subject and body fields are required to save a draft.')
             return
 
         try:
@@ -923,6 +950,17 @@ class ComposeDialog(QtWidgets.QDialog):
 
         except HttpError as error:
             QtWidgets.QMessageBox.critical(self, 'Error', f'An error occurred: {error}')
+
+
+class RefreshingText(QtWidgets.QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        layout = QtWidgets.QHBoxLayout()
+        self.label = QtWidgets.QLabel("Refreshing messages list ...")
+        self.label.setStyleSheet("color: blue;")
+        layout.addWidget(self.label)
+        layout.setAlignment(Qt.AlignCenter)
+        self.setLayout(layout)
 
 
 def main():
