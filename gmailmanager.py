@@ -227,6 +227,8 @@ class GmailManager(QtWidgets.QMainWindow):
         self.check_frequency = 180000  # Initialize the default check frequency
         self.timer_active = True
 
+        self.current_action = None
+        self.action_objects = []
         self.setup_menu()
 
         # Create and start QTimer
@@ -334,22 +336,30 @@ class GmailManager(QtWidgets.QMainWindow):
             ('Disable timer', None)
         ]
 
+        self.action_objects = []
+
         for text, frequency in self.actions:
             action = QtWidgets.QAction(text, self)
             if frequency is not None:
-                action.triggered.connect(lambda _, f=frequency: self.set_check_frequency(f))
+                action.triggered.connect(lambda _, f=frequency, a=action: self.set_check_frequency(f, a))
             else:
-                action.triggered.connect(self.handle_special_action)
+                action.triggered.connect(lambda _, a=action: self.handle_special_action(a))
             self.frequency_menu.addAction(action)
+            self.action_objects.append(action)
 
-    def handle_special_action(self):
-        action_text = self.sender().text()
+        # Select the default action based on the default check_frequency
+        default_action_index = 2  # Index for 3 minutes
+        self.update_selected_action(self.frequency_menu.actions()[default_action_index])
+
+    def handle_special_action(self, action):
+        action_text = action.text()
         if action_text == 'Custom interval':
             self.set_custom_interval()
         elif action_text == 'Disable timer':
             self.disable_timer()
+        self.update_selected_action(action)
 
-    def set_check_frequency(self, frequency):
+    def set_check_frequency(self, frequency, action):
         self.check_frequency = frequency
         self.timer.stop()
         self.update_timer()
@@ -357,6 +367,7 @@ class GmailManager(QtWidgets.QMainWindow):
         if not self.timer_active:
             self.timer_active = True
             self.update_timer()
+        self.update_selected_action(action)
 
     def set_custom_interval(self):
         interval, ok = QtWidgets.QInputDialog.getInt(self, 'Custom Interval', 'Enter interval in minutes:', 1, 1, 1440)
@@ -366,17 +377,34 @@ class GmailManager(QtWidgets.QMainWindow):
                 self.timer_active = True
             self.update_timer()
             print(f"Check frequency set to {self.check_frequency} milliseconds")
+            self.update_selected_action(self.action_objects[3])  # Custom interval is at index 3
+        else:
+            self.update_selected_action(self.current_action)  # Keep the current action selected if canceled
 
     def disable_timer(self):
         self.timer_active = False
         self.update_timer()
         print("Timer disabled")
+        self.update_selected_action(self.action_objects[4])  # Disable timer is at index 4
 
     def update_timer(self):
         if self.timer_active:
             self.timer.start(self.check_frequency)
         else:
             self.timer.stop()
+
+    def update_selected_action(self, action):
+        if self.current_action:
+            if 'Custom interval' in self.current_action.text():
+                self.current_action.setText('Custom interval')
+            else:
+                self.current_action.setText(self.current_action.text().replace(' [Selected]', ''))
+
+        self.current_action = action
+        action_text = action.text()
+        if 'Custom interval' in action_text:
+            action_text = f'Custom interval ({self.check_frequency // 60000} minutes)'
+        self.current_action.setText(f"{action_text} [Selected]")
 
     def check_for_new_and_unread_messages(self):
         # Logic to check UNREAD messages
