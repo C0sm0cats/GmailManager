@@ -602,7 +602,7 @@ class GmailManager(QtWidgets.QMainWindow):
             return
         message_id = selected_items[0].data(Qt.UserRole)
         message = self.service.users().messages().get(userId='me', id=message_id, format="full").execute()
-        print(json.dumps(self.service.users().messages().get(userId='me', id=message_id, format="full").execute(), indent=2))
+        #print(json.dumps(self.service.users().messages().get(userId='me', id=message_id, format="full").execute(), indent=2))
         payload = message.get('payload', {})
         parts = payload.get('parts', [])
 
