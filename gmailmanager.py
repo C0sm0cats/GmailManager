@@ -37,7 +37,10 @@ def get_real_date(date_string):
         parsed_date = datetime.strptime(date_string, '%Y.%m.%d-%H.%M.%S')
     except ValueError:
         # If the specific format fails, try with the standard format.
-        parsed_date = parsedate_to_datetime(date_string)
+        try:
+            parsed_date = parsedate_to_datetime(date_string)
+        except ValueError:
+            parsed_date = None
 
     if parsed_date:
         # Convert the date to the user's local time
@@ -599,7 +602,7 @@ class GmailManager(QtWidgets.QMainWindow):
             return
         message_id = selected_items[0].data(Qt.UserRole)
         message = self.service.users().messages().get(userId='me', id=message_id, format="full").execute()
-        #print(json.dumps(self.service.users().messages().get(userId='me', id=message_id, format="full").execute(), indent=2))
+        print(json.dumps(self.service.users().messages().get(userId='me', id=message_id, format="full").execute(), indent=2))
         payload = message.get('payload', {})
         parts = payload.get('parts', [])
 
