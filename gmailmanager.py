@@ -676,7 +676,7 @@ class GmailManager(QtWidgets.QMainWindow):
             </html>
             """
 
-            print(content)
+            #print(content)
 
             base_url = QtCore.QUrl.fromLocalFile(script_dir + '/')
             self.message_content.setHtml(full_content, base_url)
