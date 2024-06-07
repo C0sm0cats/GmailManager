@@ -226,6 +226,11 @@ class GmailManager(QtWidgets.QMainWindow):
 
     def __init__(self, service):
         super().__init__()
+        self.downloaded_files = []
+        self.image_directory = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'downloaded_images')
+        if not os.path.exists(self.image_directory):
+            os.makedirs(self.image_directory)
+
         self.service = service
         self.check_frequency = 180000  # Initialize the default check frequency
         self.timer_active = True
@@ -600,6 +605,11 @@ class GmailManager(QtWidgets.QMainWindow):
         selected_items = self.message_list.selectedItems()
         if not selected_items:
             return
+        # Delete the previously downloaded PNG files.
+        self.delete_downloaded_files()
+        # Clear the list of downloaded files.
+        self.downloaded_files = []
+
         message_id = selected_items[0].data(Qt.UserRole)
         message = self.service.users().messages().get(userId='me', id=message_id, format="full").execute()
         #print(json.dumps(self.service.users().messages().get(userId='me', id=message_id, format="full").execute(), indent=2))
@@ -632,10 +642,44 @@ class GmailManager(QtWidgets.QMainWindow):
 
         if 'text/html' in [part.get('mimeType') for part in parts]:
             content = self.extract_html([payload])
+            self.message_content.setHtml(f"<h2 style='margin-top: 10px;'>{subject}</h2><div>{date_str}</div><div>{from_email_str}</div><div>{to_emails_str}</div><hr>{content}")
         else:
+            attachments = GmailManager.get_attachments(self, message_id)
+            cid_to_path = {}  # Dictionary to map CIDs to local paths
+            for attachment in attachments:
+                saved_path = self.save_attachment(self.image_directory, attachment)
+                if saved_path:
+                    cid_to_path[attachment['filename']] = saved_path
+                    self.downloaded_files.append(saved_path)  # Add the file path to the list
+                    #print(f"Mapping cid '{attachment['filename']}' to local path '{saved_path}'")
+                else:
+                    print(f"Failed to save attachment '{attachment['filename']}'.")
             content = self.extract_data([payload])
+            script_dir = os.path.dirname(os.path.abspath(__file__))
+            for cid, path in cid_to_path.items():
+                #print(f"Replacing src for cid '{cid}' with local path '{path}'")
+                # Add the prefix file:// and the absolute path of the script's directory to the image path.
+                absolute_path = f"file://{path}"
+                content = re.sub(r'src=["\']cid:{}["\']'.format(re.escape(cid)), f'src="{absolute_path}"', content)
 
-        self.message_content.setHtml(f"<h2 style='margin-top: 10px;'>{subject}</h2><div>{date_str}</div><div>{from_email_str}</div><div>{to_emails_str}</div><hr>{content}")
+            # Construct full HTML content
+            full_content = f"""
+            <html>
+            <body>
+                <h2 style='margin-top: 10px;'>{subject}</h2>
+                <div>{date_str}</div>
+                <div>{from_email_str}</div>
+                <div>{to_emails_str}</div>
+                <hr>
+                {content}
+            </body>
+            </html>
+            """
+
+            print(content)
+
+            base_url = QtCore.QUrl.fromLocalFile(script_dir + '/')
+            self.message_content.setHtml(full_content, base_url)
 
     def mark_message_as_read_from_button(self):
         # Retrieve IDs of selected messages in the list of messages
@@ -691,6 +735,71 @@ class GmailManager(QtWidgets.QMainWindow):
         except HttpError as error:
             QtWidgets.QMessageBox.critical(None, "Error", f"An error occurred while marking the messages as not read: {error}")
 
+    def delete_downloaded_files(self):
+        for file_path in self.downloaded_files:
+            try:
+                os.remove(file_path)
+                #print(f"Deleted file '{file_path}'")
+            except Exception as e:
+                print(f"Failed to delete file '{file_path}': {e}")
+
+    @staticmethod
+    def save_attachment(directory, attachment_data):
+        try:
+            filename = attachment_data['filename']
+            filename = re.sub(r'[\\/*?:"<>|]', "", filename) + ".png"
+            if directory and not os.path.exists(directory):
+                os.makedirs(directory)
+
+            filepath = os.path.join(directory, filename)
+            with open(filepath, 'wb') as f:
+                f.write(base64.urlsafe_b64decode(attachment_data['data']))
+            #print(f"Attachment '{filename}' saved to '{directory}'.")
+            return filepath
+        except Exception as e:
+            print("An error occurred while saving attachment:", e)
+            return None
+
+    @staticmethod
+    def get_content_id(headers):
+        for header in headers:
+            if header['name'].lower() == 'content-id':
+                return header['value'].strip('<>')
+        return None
+
+    @staticmethod
+    def get_attachments(self, message_id):
+        try:
+            #print("Fetching message attachments...")
+            message = self.service.users().messages().get(userId='me', id=message_id).execute()
+
+            attachments = []
+            if 'parts' in message['payload']:
+                #print("Processing message parts for attachments...")
+                for part in message['payload']['parts']:
+                    if 'body' in part and 'attachmentId' in part['body']:
+                        #print(f"Downloading attachment: {part['filename']}")
+                        attachment_data = self.service.users().messages().attachments().get(
+                            userId='me', messageId=message_id, id=part['body']['attachmentId']
+                        ).execute()
+                        if 'data' in attachment_data:
+                            content_id = self.get_content_id(part['headers'])
+                            if content_id:
+                                attachments.append({'filename': content_id, 'data': attachment_data['data']})
+                                #print(f"Attachment '{content_id}' downloaded.")
+                            else:
+                                print("No Content-ID found.")
+                        else:
+                            print("No attachment data found.")
+            else:
+                print("No parts found in message.")
+
+            return attachments
+
+        except Exception as e:
+            print('An error occurred:', e)
+            return []
+
     def extract_data(self, parts):
         result = ""
         max_size = 0
@@ -702,12 +811,12 @@ class GmailManager(QtWidgets.QMainWindow):
                     if 'data' in part['body']:
                         data = part['body']['data']
                         result = GmailManager.decode_base64(data).decode("utf-8")
-                elif 'parts' in part:
-                    sub_data = self.extract_data(part['parts'])
-                    sub_size = len(sub_data)
-                    if sub_size > max_size:
-                        result = sub_data
-                        max_size = sub_size
+            if 'parts' in part:
+                sub_data = self.extract_data(part['parts'])
+                sub_size = len(sub_data)
+                if sub_size > max_size:
+                    result = sub_data
+                    max_size = sub_size
         return result
 
     def find_matching_part(self, parts, mime_type, max_depth, current_depth=0):
