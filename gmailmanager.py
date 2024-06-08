@@ -18,8 +18,8 @@ from tzlocal import get_localzone
 from PyQt5.QtWebEngineWidgets import QWebEngineView
 from PyQt5 import QtWidgets, QtGui, QtCore
 from PyQt5.QtWidgets import QPushButton, QProgressBar
-from PyQt5.QtCore import Qt
-from PyQt5.QtCore import QTimer
+from PyQt5.QtCore import Qt, QTimer, QUrl
+from PyQt5.QtGui import QDesktopServices
 
 #logging.basicConfig(level=logging.DEBUG)
 
@@ -226,10 +226,16 @@ class GmailManager(QtWidgets.QMainWindow):
 
     def __init__(self, service):
         super().__init__()
-        self.downloaded_files = []
+
+        self.downloaded_images = []
         self.image_directory = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'downloaded_images')
         if not os.path.exists(self.image_directory):
             os.makedirs(self.image_directory)
+
+        self.downloaded_pdf = []
+        self.pdf_directory = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'downloaded_pdf')
+        if not os.path.exists(self.pdf_directory):
+            os.makedirs(self.pdf_directory)
 
         self.service = service
         self.check_frequency = 180000  # Initialize the default check frequency
@@ -605,10 +611,12 @@ class GmailManager(QtWidgets.QMainWindow):
         selected_items = self.message_list.selectedItems()
         if not selected_items:
             return
-        # Delete the previously downloaded PNG files.
-        self.delete_downloaded_files()
-        # Clear the list of downloaded files.
-        self.downloaded_files = []
+        # Delete the previously downloaded PNG files and PDF files .
+        self.delete_downloaded_images()
+        self.delete_downloaded_pdf()
+        # Clear the list of downloaded PNG files and PDF files.
+        self.downloaded_images = []
+        self.downloaded_pdf = []
 
         message_id = selected_items[0].data(Qt.UserRole)
         message = self.service.users().messages().get(userId='me', id=message_id, format="full").execute()
@@ -650,17 +658,36 @@ class GmailManager(QtWidgets.QMainWindow):
                 saved_path = self.save_attachment(self.image_directory, attachment)
                 if saved_path:
                     cid_to_path[attachment['filename']] = saved_path
-                    self.downloaded_files.append(saved_path)  # Add the file path to the list
+                    self.downloaded_images.append(saved_path)  # Add the file path to the list
                     #print(f"Mapping cid '{attachment['filename']}' to local path '{saved_path}'")
                 else:
                     print(f"Failed to save attachment '{attachment['filename']}'.")
+
             content = self.extract_data([payload])
             script_dir = os.path.dirname(os.path.abspath(__file__))
+
             for cid, path in cid_to_path.items():
                 #print(f"Replacing src for cid '{cid}' with local path '{path}'")
                 # Add the prefix file:// and the absolute path of the script's directory to the image path.
                 absolute_path = f"file://{path}"
                 content = re.sub(r'src=["\']cid:{}["\']'.format(re.escape(cid)), f'src="{absolute_path}"', content)
+
+            if self.downloaded_pdf:
+                if len(self.downloaded_pdf) > 1:
+                    content += "<p><strong>PDF Attachments:</strong></p>"
+                    for filename in self.downloaded_pdf:
+                        file_path = os.path.join(self.pdf_directory, filename)
+                        file_pdf = f"file://{file_path}"
+                        content += f"<p>&#8226; <a href=\"{file_pdf}\">{filename}</a></p>"
+                else:
+                    filename = self.downloaded_pdf[0]
+                    file_path = os.path.join(self.pdf_directory, filename)
+                    file_pdf = f"file://{file_path}"
+                    content += f"<p><strong>PDF Attachment:</strong> <a href=\"{file_pdf}\">{filename}</a></p>"
+
+            # logic to detect links to PDF files and open them in the browser.
+            self.message_content.page().profile().downloadRequested.connect(self.on_pdf_requested)
+            #print(content)
 
             # Construct full HTML content
             full_content = f"""
@@ -676,7 +703,7 @@ class GmailManager(QtWidgets.QMainWindow):
             </html>
             """
 
-            #print(content)
+            #print(full_content)
 
             base_url = QtCore.QUrl.fromLocalFile(script_dir + '/')
             self.message_content.setHtml(full_content, base_url)
@@ -735,30 +762,26 @@ class GmailManager(QtWidgets.QMainWindow):
         except HttpError as error:
             QtWidgets.QMessageBox.critical(None, "Error", f"An error occurred while marking the messages as not read: {error}")
 
-    def delete_downloaded_files(self):
-        for file_path in self.downloaded_files:
+    def delete_downloaded_images(self):
+        #print("Deleting downloaded images...")
+        for file_path in self.downloaded_images:
             try:
-                os.remove(file_path)
-                #print(f"Deleted file '{file_path}'")
+                if os.path.exists(file_path):
+                    os.remove(file_path)
+                    #print(f"Deleted file '{file_path}'")
             except Exception as e:
                 print(f"Failed to delete file '{file_path}': {e}")
 
-    @staticmethod
-    def save_attachment(directory, attachment_data):
-        try:
-            filename = attachment_data['filename']
-            filename = re.sub(r'[\\/*?:"<>|]', "", filename) + ".png"
-            if directory and not os.path.exists(directory):
-                os.makedirs(directory)
-
-            filepath = os.path.join(directory, filename)
-            with open(filepath, 'wb') as f:
-                f.write(base64.urlsafe_b64decode(attachment_data['data']))
-            #print(f"Attachment '{filename}' saved to '{directory}'.")
-            return filepath
-        except Exception as e:
-            print("An error occurred while saving attachment:", e)
-            return None
+    def delete_downloaded_pdf(self):
+        #print("Deleting downloaded PDFs...")
+        for file_name in self.downloaded_pdf:
+            file_path = os.path.join(self.pdf_directory, file_name)  # Construct the full file path
+            try:
+                if os.path.exists(file_path):
+                    os.remove(file_path)
+                    #print(f"Deleted file '{file_path}'")
+            except Exception as e:
+                print(f"Failed to delete file '{file_path}': {e}")
 
     @staticmethod
     def get_content_id(headers):
@@ -800,9 +823,37 @@ class GmailManager(QtWidgets.QMainWindow):
             print('An error occurred:', e)
             return []
 
+    @staticmethod
+    def save_attachment(directory, attachment_data):
+        try:
+            filename = attachment_data['filename']
+            filename = re.sub(r'[\\/*?:"<>|]', "", filename) + ".png"
+            if directory and not os.path.exists(directory):
+                os.makedirs(directory)
+
+            filepath = os.path.join(directory, filename)
+            with open(filepath, 'wb') as f:
+                f.write(base64.urlsafe_b64decode(attachment_data['data']))
+            #print(f"Attachment '{filename}' saved to '{directory}'.")
+            return filepath
+        except Exception as e:
+            print("An error occurred while saving attachment:", e)
+            return None
+
+    @staticmethod
+    def open_pdf_in_browser(pdf_path):
+        QDesktopServices.openUrl(QUrl(pdf_path))
+
+    def on_pdf_requested(self, download):
+        url = download.url().toString()
+        if url.lower().endswith('.pdf'):
+            self.open_pdf_in_browser(url)
+
     def extract_data(self, parts):
         result = ""
         max_size = 0
+        pdf_ids_downloaded = set()
+
         for part in parts:
             if 'body' in part:
                 body_size = part['body']['size']
@@ -811,12 +862,34 @@ class GmailManager(QtWidgets.QMainWindow):
                     if 'data' in part['body']:
                         data = part['body']['data']
                         result = GmailManager.decode_base64(data).decode("utf-8")
-            if 'parts' in part:
-                sub_data = self.extract_data(part['parts'])
-                sub_size = len(sub_data)
-                if sub_size > max_size:
-                    result = sub_data
-                    max_size = sub_size
+                elif 'parts' in part:
+                    sub_data = self.extract_data(part['parts'])
+                    sub_size = len(sub_data)
+                    if sub_size > max_size:
+                        result = sub_data
+                        max_size = sub_size
+
+            # Check if the part contains a PDF; if so, download it
+            if part.get('mimeType') == 'application/pdf' and part.get('filename'):
+                part_id = part.get('partId')
+                if part_id not in pdf_ids_downloaded:
+                    filename = part['filename']
+                    selected_items = self.message_list.selectedItems()
+                    if not selected_items:
+                        return
+                    message_id = selected_items[0].data(Qt.UserRole)
+                    attachment = self.service.users().messages().attachments().get(userId='me', messageId=message_id, id=part['body']['attachmentId']).execute()
+                    file_data = base64.urlsafe_b64decode(attachment['data'])
+                    pdf_path = os.path.join(self.pdf_directory, filename)
+                    with open(pdf_path, 'wb') as f:
+                        f.write(file_data)
+
+                    pdf_ids_downloaded.add(part_id)
+                    self.downloaded_pdf.append(filename)
+
+                    #print(f"Downloaded PDF part_id: {part_id}")
+
+        #print(f"PDF part IDs downloaded: {pdf_ids_downloaded}")
         return result
 
     def find_matching_part(self, parts, mime_type, max_depth, current_depth=0):
