@@ -649,8 +649,61 @@ class GmailManager(QtWidgets.QMainWindow):
         to_emails_str = f"<strong>To:</strong> {to_emails}"
 
         if 'text/html' in [part.get('mimeType') for part in parts]:
+            attachments = GmailManager.get_attachments(self, message_id)
+            cid_to_path = {}  # Dictionary to map CIDs to local paths
+            for attachment in attachments:
+                saved_path = self.save_attachment(self.image_directory, attachment)
+                if saved_path:
+                    cid_to_path[attachment['filename']] = saved_path
+                    self.downloaded_images.append(saved_path)  # Add the file path to the list
+                    #print(f"Mapping cid '{attachment['filename']}' to local path '{saved_path}'")
+                else:
+                    print(f"Failed to save attachment '{attachment['filename']}'.")
+
             content = self.extract_html([payload])
-            self.message_content.setHtml(f"<h2 style='margin-top: 10px;'>{subject}</h2><div>{date_str}</div><div>{from_email_str}</div><div>{to_emails_str}</div><hr>{content}")
+            script_dir = os.path.dirname(os.path.abspath(__file__))
+
+            for cid, path in cid_to_path.items():
+                #print(f"Replacing src for cid '{cid}' with local path '{path}'")
+                # Add the prefix file:// and the absolute path of the script's directory to the image path.
+                absolute_path = f"file://{path}"
+                content = re.sub(r'src=["\']cid:{}["\']'.format(re.escape(cid)), f'src="{absolute_path}"', content)
+
+            if self.downloaded_pdf:
+                if len(self.downloaded_pdf) > 1:
+                    content += "<p><strong>PDF Attachments:</strong></p>"
+                    for filename in self.downloaded_pdf:
+                        file_path = os.path.join(self.pdf_directory, filename)
+                        file_pdf = f"file://{file_path}"
+                        content += f"<p>&#8226; <a href=\"{file_pdf}\">{filename}</a></p>"
+                else:
+                    filename = self.downloaded_pdf[0]
+                    file_path = os.path.join(self.pdf_directory, filename)
+                    file_pdf = f"file://{file_path}"
+                    content += f"<p><strong>PDF Attachment:</strong> <a href=\"{file_pdf}\">{filename}</a></p>"
+
+            # logic to detect links to PDF files and open them in the browser.
+            self.message_content.page().profile().downloadRequested.connect(self.on_pdf_requested)
+            #print(content)
+
+            # Construct full HTML content
+            full_content = f"""
+            <html>
+            <body>
+                <h2 style='margin-top: 10px;'>{subject}</h2>
+                <div>{date_str}</div>
+                <div>{from_email_str}</div>
+                <div>{to_emails_str}</div>
+                <hr>
+                {content}
+            </body>
+            </html>
+            """
+
+            #print(full_content)
+
+            base_url = QtCore.QUrl.fromLocalFile(script_dir + '/')
+            self.message_content.setHtml(full_content, base_url)
         else:
             attachments = GmailManager.get_attachments(self, message_id)
             cid_to_path = {}  # Dictionary to map CIDs to local paths
@@ -895,6 +948,7 @@ class GmailManager(QtWidgets.QMainWindow):
     def find_matching_part(self, parts, mime_type, max_depth, current_depth=0):
         matching_part = None
         max_size = 0
+        pdf_ids_downloaded = set()
 
         for part in parts:
             if 'mimeType' in part and part['mimeType'] == mime_type:
@@ -909,6 +963,28 @@ class GmailManager(QtWidgets.QMainWindow):
                     if matched_part['body']['size'] > max_size:
                         matching_part = matched_part
                         max_size = matched_part['body']['size']
+
+            # Check if the part contains a PDF; if so, download it
+            if part.get('mimeType') == 'application/pdf' and part.get('filename'):
+                part_id = part.get('partId')
+                if part_id not in pdf_ids_downloaded:
+                    filename = part['filename']
+                    selected_items = self.message_list.selectedItems()
+                    if not selected_items:
+                        return
+                    message_id = selected_items[0].data(Qt.UserRole)
+                    attachment = self.service.users().messages().attachments().get(userId='me', messageId=message_id, id=part['body']['attachmentId']).execute()
+                    file_data = base64.urlsafe_b64decode(attachment['data'])
+                    pdf_path = os.path.join(self.pdf_directory, filename)
+                    with open(pdf_path, 'wb') as f:
+                        f.write(file_data)
+
+                    pdf_ids_downloaded.add(part_id)
+                    self.downloaded_pdf.append(filename)
+
+                    #print(f"Downloaded PDF part_id: {part_id}")
+
+        #print(f"PDF part IDs downloaded: {pdf_ids_downloaded}")
         return matching_part
 
     def extract_html(self, parts, max_depth=3):
