@@ -66,3 +66,7 @@ This project is currently a work-in-progress (WIP). Contributions are welcome! P
 
 ## License
 This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
+
+## Activity
+
+![Alt](https://repobeats.axiom.co/api/embed/ee372745f7916c081765055317cb31ace3e330bd.svg "Repobeats analytics image")
